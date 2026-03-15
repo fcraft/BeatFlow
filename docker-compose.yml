@@ -1,0 +1,71 @@
+version: '3.8'
+
+services:
+  # PostgreSQL数据库
+  postgres:
+    image: postgres:15-alpine
+    container_name: beat-flow-postgres
+    environment:
+      POSTGRES_DB: beat_flow
+      POSTGRES_USER: beat_flow_user
+      POSTGRES_PASSWORD: beat_flow_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - beat-flow-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U beat_flow_user -d beat_flow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # 后端API服务
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: beat-flow-backend
+    environment:
+      - APP_ENV=production
+      - DATABASE_URL=postgresql://beat_flow_user:beat_flow_password@postgres:5432/beat_flow
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-your-secret-key-change-in-production}
+      - STORAGE_TYPE=local
+      - LOCAL_STORAGE_PATH=/app/storage
+      - CORS_ORIGINS=["*"]
+    volumes:
+      - media_storage:/app/storage
+      - uploads:/app/uploads
+    ports:
+      - "3090:3090"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - beat-flow-network
+    restart: unless-stopped
+
+  # 前端应用
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: beat-flow-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    networks:
+      - beat-flow-network
+    restart: unless-stopped
+
+networks:
+  beat-flow-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  media_storage:
+  uploads:

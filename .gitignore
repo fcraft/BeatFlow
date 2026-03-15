@@ -1,0 +1,45 @@
+# Claude Code
+.claude/
+.codebuddy/
+skills/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+pytest-of-root/
+
+# Environment & secrets
+.env
+*.env.local
+
+# Node / Frontend
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Docker volumes / data
+docker/data/
+
+# Runtime files
+.dev-pids/
+.last-run.json
+backend/uploads/
+frontend/e2e-results.txt

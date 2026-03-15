@@ -1,0 +1,420 @@
+/* ═══════════════════════════════════════════════════════
+   Apple Glass UI — Tab 共享样式
+   用于所有 ControlPanel 子 Tab 组件
+   ═══════════════════════════════════════════════════════ */
+
+/* ── Root container ── */
+.glass-tab-root {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* ── Card button grid ── */
+.glass-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.glass-grid--2col {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.glass-grid--4col {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+.glass-grid--5col {
+  grid-template-columns: repeat(5, 1fr);
+}
+
+/* ── Glass card button ── */
+.glass-card-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 6px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  text-align: center;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.glass-card-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.15);
+  transform: translateY(-1px);
+}
+
+.glass-card-btn:active {
+  transform: scale(0.97);
+}
+
+.glass-card-btn--active {
+  background: rgba(0, 122, 255, 0.12);
+  border-color: rgba(0, 122, 255, 0.3);
+  box-shadow: 0 0 0 1px rgba(0, 122, 255, 0.15),
+              0 4px 12px rgba(0, 122, 255, 0.1);
+}
+
+.glass-card-btn--active .glass-card-label {
+  color: #007AFF;
+}
+
+/* ── Danger variant (condition/emergency) ── */
+.glass-card-btn--danger {
+  background: rgba(255, 59, 48, 0.08);
+  border-color: rgba(255, 59, 48, 0.25);
+  box-shadow: 0 0 0 1px rgba(255, 59, 48, 0.12);
+}
+
+.glass-card-btn--danger .glass-card-label {
+  color: #FF3B30;
+}
+
+/* ── Teal variant (active body state from vitals) ── */
+.glass-card-btn--teal {
+  background: rgba(48, 209, 188, 0.1);
+  border-color: rgba(48, 209, 188, 0.3);
+  box-shadow: 0 0 0 1px rgba(48, 209, 188, 0.12);
+}
+
+.glass-card-btn--teal .glass-card-label {
+  color: #30D1BC;
+}
+
+/* ── Purple variant (medication) ── */
+.glass-card-btn--purple {
+  background: rgba(175, 82, 222, 0.1);
+  border-color: rgba(175, 82, 222, 0.3);
+  box-shadow: 0 0 0 1px rgba(175, 82, 222, 0.12);
+}
+
+.glass-card-btn--purple .glass-card-label {
+  color: #AF52DE;
+}
+
+/* ── Card icon / label / desc ── */
+.glass-card-icon {
+  font-size: 20px;
+  line-height: 1;
+}
+
+.glass-card-label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: rgba(255, 255, 255, 0.85);
+  transition: color 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.glass-card-desc {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.3);
+  line-height: 1.3;
+}
+
+.glass-card-value {
+  font-size: 9px;
+  font-family: 'JetBrains Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  color: #AF52DE;
+}
+
+/* ── Glass section (panel) ── */
+.glass-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.glass-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+/* ── Slider group ── */
+.glass-slider-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.glass-slider-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.glass-slider-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.glass-slider-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.25);
+}
+
+/* ── Range input (track + thumb) ── */
+.glass-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.1);
+  outline: none;
+  cursor: pointer;
+}
+
+.glass-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid #007AFF;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(0, 122, 255, 0.1);
+  margin-top: -6px;
+  transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.glass-range:hover::-webkit-slider-thumb {
+  transform: scale(1.15);
+}
+
+.glass-range::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid #007AFF;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+}
+
+.glass-range::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+  background: inherit;
+}
+
+.glass-range::-moz-range-track {
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* Color variants */
+.glass-range--blue::-webkit-slider-thumb { border-color: #007AFF; }
+.glass-range--red::-webkit-slider-thumb { border-color: #FF3B30; }
+.glass-range--green::-webkit-slider-thumb { border-color: #34C759; }
+.glass-range--orange::-webkit-slider-thumb { border-color: #FF9500; }
+.glass-range--purple::-webkit-slider-thumb { border-color: #AF52DE; }
+.glass-range--teal::-webkit-slider-thumb { border-color: #30D1BC; }
+.glass-range--indigo::-webkit-slider-thumb { border-color: #5856D6; }
+.glass-range--rose::-webkit-slider-thumb { border-color: #FF2D55; }
+
+.glass-range--blue::-moz-range-thumb { border-color: #007AFF; }
+.glass-range--red::-moz-range-thumb { border-color: #FF3B30; }
+.glass-range--green::-moz-range-thumb { border-color: #34C759; }
+.glass-range--orange::-moz-range-thumb { border-color: #FF9500; }
+.glass-range--purple::-moz-range-thumb { border-color: #AF52DE; }
+.glass-range--teal::-moz-range-thumb { border-color: #30D1BC; }
+.glass-range--indigo::-moz-range-thumb { border-color: #5856D6; }
+.glass-range--rose::-moz-range-thumb { border-color: #FF2D55; }
+
+/* ── Capsule / pill button ── */
+.glass-pill-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 18px;
+  border-radius: 980px;
+  font-size: 13px;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.glass-pill-btn--primary {
+  background: #007AFF;
+  color: #fff;
+  box-shadow: 0 4px 16px rgba(0, 122, 255, 0.3);
+}
+
+.glass-pill-btn--primary:hover {
+  box-shadow: 0 4px 20px rgba(0, 122, 255, 0.4);
+  transform: translateY(-1px);
+}
+
+.glass-pill-btn--secondary {
+  background: rgba(255, 255, 255, 0.08);
+  color: #007AFF;
+  border: 1px solid rgba(0, 122, 255, 0.2);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.glass-pill-btn--secondary:hover {
+  background: rgba(0, 122, 255, 0.08);
+}
+
+.glass-pill-btn--danger {
+  background: #FF3B30;
+  color: #fff;
+  box-shadow: 0 4px 16px rgba(255, 59, 48, 0.3);
+}
+
+.glass-pill-btn--danger:hover {
+  box-shadow: 0 4px 20px rgba(255, 59, 48, 0.4);
+}
+
+.glass-pill-btn--ghost {
+  background: transparent;
+  color: rgba(255, 255, 255, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.glass-pill-btn--ghost:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.glass-pill-btn--green {
+  background: rgba(52, 199, 89, 0.15);
+  color: #34C759;
+  border: 1px solid rgba(52, 199, 89, 0.25);
+}
+
+.glass-pill-btn--green:hover {
+  background: rgba(52, 199, 89, 0.25);
+}
+
+.glass-pill-btn--sm {
+  padding: 5px 14px;
+  font-size: 12px;
+}
+
+.glass-pill-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+/* ── Inline tag / chip ── */
+.glass-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 980px;
+  font-size: 10px;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.glass-chip--amber {
+  background: rgba(255, 149, 0, 0.12);
+  border-color: rgba(255, 149, 0, 0.25);
+  color: #FF9500;
+}
+
+.glass-chip--red {
+  background: rgba(255, 59, 48, 0.12);
+  border-color: rgba(255, 59, 48, 0.25);
+  color: #FF3B30;
+}
+
+/* ── Separator ── */
+.glass-divider {
+  border: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  margin: 4px 0;
+}
+
+/* ── Hint text ── */
+.glass-hint {
+  font-size: 10px;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.25);
+}
+
+/* ── Toggle switch (iOS style) ── */
+.glass-toggle {
+  position: relative;
+  display: inline-flex;
+  width: 36px;
+  height: 20px;
+  align-items: center;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  border: none;
+  padding: 0;
+}
+
+.glass-toggle--off {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.glass-toggle--on {
+  background: #34C759;
+}
+
+.glass-toggle-knob {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.glass-toggle--off .glass-toggle-knob {
+  transform: translateX(2px);
+}
+
+.glass-toggle--on .glass-toggle-knob {
+  transform: translateX(18px);
+}
+
+/* ── Normal range indicator (electrolyte sliders) ── */
+.glass-range-indicator {
+  position: absolute;
+  top: 0;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(52, 199, 89, 0.15);
+  pointer-events: none;
+}

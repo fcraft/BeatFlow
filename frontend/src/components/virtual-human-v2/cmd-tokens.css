@@ -1,0 +1,131 @@
+/* ═══════════════════════════════════════════════════════
+   Command Center — Apple Glass UI Dark Mode Design Tokens
+   ═══════════════════════════════════════════════════════ */
+
+:root {
+  /* ── Background layers ── */
+  --cmd-bg: #000000;
+  --cmd-bg-gradient: linear-gradient(145deg, #000000 0%, #060608 40%, #0a0a14 100%);
+  --cmd-surface: rgba(20, 20, 28, 0.65);
+  --cmd-wave-bg: #060608;
+
+  /* ── Glass tiers ── */
+  --cmd-glass-strong-bg: rgba(30, 30, 30, 0.72);
+  --cmd-glass-strong-blur: blur(32px) saturate(1.8);
+  --cmd-glass-strong-border: rgba(255, 255, 255, 0.08);
+  --cmd-glass-medium-bg: rgba(25, 25, 25, 0.60);
+  --cmd-glass-medium-blur: blur(16px);
+  --cmd-glass-medium-border: rgba(255, 255, 255, 0.06);
+  --cmd-glass-subtle-bg: rgba(15, 15, 20, 0.50);
+  --cmd-glass-subtle-blur: blur(8px);
+
+  /* ── Accent & functional colors (iOS palette) ── */
+  --cmd-primary: #007AFF;
+  --cmd-success: #34C759;
+  --cmd-warning: #FF9500;
+  --cmd-danger: #FF3B30;
+  --cmd-info: #5AC8FA;
+  --cmd-purple: #AF52DE;
+  --cmd-teal: #30D1BC;
+
+  /* ── Text ── */
+  --cmd-text-primary: rgba(242, 242, 247, 0.92);
+  --cmd-text-secondary: rgba(242, 242, 247, 0.55);
+  --cmd-text-tertiary: rgba(242, 242, 247, 0.30);
+  --cmd-text-quaternary: rgba(242, 242, 247, 0.15);
+
+  /* ── Border ── */
+  --cmd-border: rgba(255, 255, 255, 0.06);
+  --cmd-border-hover: rgba(255, 255, 255, 0.12);
+
+  /* ── Easing ── */
+  --cmd-ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
+  --cmd-ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* ── Font stacks ── */
+  --cmd-font-display: 'Plus Jakarta Sans', -apple-system, system-ui, sans-serif;
+  --cmd-font-body: 'Inter', -apple-system, system-ui, sans-serif;
+  --cmd-font-mono: 'JetBrains Mono', 'SF Mono', 'Menlo', monospace;
+
+  /* ── Sidebar ── */
+  --cmd-sidebar-width: 240px;
+  --cmd-statusbar-height: 40px;
+  --cmd-timeline-height: 36px;
+}
+
+/* ── Heartbeat pulse animation ── */
+@keyframes cmd-pulse-beat {
+  0% { transform: scale(1); }
+  15% { transform: scale(1.06); }
+  30% { transform: scale(1); }
+  100% { transform: scale(1); }
+}
+
+.cmd-pulse-beat {
+  animation: cmd-pulse-beat 0.35s var(--cmd-ease-spring);
+}
+
+/* ── Glass reveal entrance ── */
+@keyframes cmd-glass-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(24px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.cmd-glass-reveal {
+  animation: cmd-glass-reveal 0.85s var(--cmd-ease-spring) forwards;
+}
+
+/* ── Overlay entrance ── */
+@keyframes cmd-overlay-in {
+  from {
+    opacity: 0;
+    backdrop-filter: blur(0px);
+  }
+  to {
+    opacity: 1;
+    backdrop-filter: blur(40px);
+  }
+}
+
+@keyframes cmd-overlay-content-in {
+  from {
+    opacity: 0;
+    transform: scale(0.94) translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* ── Alarm pulse ── */
+@keyframes cmd-alarm-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+/* ── Status dot pulse ── */
+@keyframes cmd-dot-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(52, 199, 89, 0.5); }
+  50% { box-shadow: 0 0 0 4px rgba(52, 199, 89, 0); }
+}
+
+/* ── Vital indicator bar glow ── */
+@keyframes cmd-bar-glow {
+  0%, 100% { opacity: 0.7; }
+  50% { opacity: 1; }
+}
+
+/* ── Grid lines for waveform ── */
+.cmd-wave-grid {
+  background-image:
+    linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+  background-size: 25% 25%;
+}

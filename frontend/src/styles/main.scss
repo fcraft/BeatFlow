@@ -1,0 +1,111 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+  html {
+    font-size: 16px;
+    -webkit-font-smoothing: antialiased;
+  }
+  body {
+    @apply bg-gray-50 text-gray-900 font-sans leading-relaxed;
+  }
+  #app { min-height: 100vh; }
+  a { @apply text-primary-600 no-underline hover:underline; }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border transition-all duration-150 cursor-pointer select-none focus:outline-none focus:ring-2 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-primary  { @apply btn bg-primary-600 text-white border-primary-600 hover:bg-primary-700 focus:ring-primary-500; }
+  .btn-secondary { @apply btn bg-white text-gray-700 border-gray-300 hover:bg-gray-50 focus:ring-gray-400; }
+  .btn-danger   { @apply btn bg-red-600 text-white border-red-600 hover:bg-red-700 focus:ring-red-500; }
+  .btn-ghost    { @apply btn bg-transparent text-gray-600 border-transparent hover:bg-gray-100 focus:ring-gray-400; }
+  .btn-sm       { @apply px-3 py-1.5 text-xs; }
+  .btn-lg       { @apply px-6 py-3 text-base; }
+  .btn-icon     { @apply btn p-2 border-transparent bg-transparent text-gray-500 hover:bg-gray-100 hover:text-gray-700 focus:ring-gray-400; }
+
+  .card         { @apply bg-white rounded-xl border border-gray-200 shadow-sm; }
+  .card-hover   { @apply card transition-all duration-200 hover:shadow-md hover:border-primary-300 cursor-pointer; }
+
+  .input        { @apply w-full px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors duration-150; }
+  .input-error  { @apply border-red-400 focus:ring-red-400 focus:border-red-400; }
+  .textarea     { @apply input resize-none; }
+  .select       { @apply input appearance-none cursor-pointer; }
+  .label        { @apply block text-sm font-medium text-gray-700 mb-1.5; }
+
+  .badge        { @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium; }
+  .badge-blue   { @apply badge bg-blue-100 text-blue-700; }
+  .badge-green  { @apply badge bg-emerald-100 text-emerald-700; }
+  .badge-red    { @apply badge bg-red-100 text-red-700; }
+  .badge-gray   { @apply badge bg-gray-100 text-gray-600; }
+  .badge-purple { @apply badge bg-purple-100 text-purple-700; }
+  .badge-amber  { @apply badge bg-amber-100 text-amber-700; }
+
+  .spinner      { @apply inline-block w-5 h-5 border-2 border-gray-200 border-t-primary-600 rounded-full animate-spin; }
+  .divider      { @apply border-t border-gray-200 my-6; }
+  .page-container { @apply max-w-7xl mx-auto px-4 sm:px-6 py-6; }
+}
+
+@layer utilities {
+  /* Hide scrollbar but keep functionality */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+    &::-webkit-scrollbar { display: none; }
+  }
+}
+
+/* ── Range input global reset (ensure light-mode track is always visible) ── */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 9999px;
+  background: #e5e7eb; /* gray-200 — track */
+  outline: none;
+  cursor: pointer;
+}
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 9999px;
+  background: inherit;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 2px solid currentColor;
+  margin-top: -5px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.2);
+  transition: transform .1s;
+}
+input[type="range"]:hover::-webkit-slider-thumb { transform: scale(1.15); }
+input[type="range"]::-moz-range-track {
+  height: 4px;
+  border-radius: 9999px;
+  background: #e5e7eb;
+}
+input[type="range"]::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 2px solid currentColor;
+  box-shadow: 0 1px 3px rgba(0,0,0,.2);
+  cursor: pointer;
+}
+/* accent colour helpers – match Tailwind accent-* classes */
+input[type="range"].accent-green-500  { color: #22c55e; }
+input[type="range"].accent-purple-500 { color: #a855f7; }
+input[type="range"].accent-blue-500   { color: #3b82f6; }
+input[type="range"].accent-orange-500 { color: #f97316; }
