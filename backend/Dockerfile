@@ -3,6 +3,12 @@ FROM python:3.11-slim AS builder
 
 WORKDIR /app
 
+# 换用阿里云 apt 镜像（Debian trixie），加速国内构建
+RUN sed -i 's|http://deb.debian.org/debian|https://mirrors.aliyun.com/debian|g; s|http://deb.debian.org/debian-security|https://mirrors.aliyun.com/debian-security|g' \
+    /etc/apt/sources.list.d/debian.sources 2>/dev/null; \
+    echo 'Types: deb\nURIs: https://mirrors.aliyun.com/debian\nSuites: trixie trixie-updates\nComponents: main contrib non-free non-free-firmware\nSigned-By: /usr/share/keyrings/debian-archive-keyring.gpg' \
+    > /etc/apt/sources.list.d/debian.sources
+
 # 安装系统构建依赖
 RUN apt-get update && apt-get install -y \
     gcc \
@@ -17,17 +23,23 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 # 先复制依赖声明，利用 Docker 缓存
 COPY pyproject.toml uv.lock ./
 
-# 安装依赖到 .venv（不安装项目本身，只装依赖）
-RUN uv sync --frozen --no-install-project --no-dev
+# 安装依赖到 .venv（使用清华 PyPI 镜像）
+RUN UV_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple \
+    uv sync --frozen --no-install-project --no-dev
 
 # 复制应用代码并安装项目
 COPY . .
-RUN uv sync --frozen --no-dev
+RUN UV_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple \
+    uv sync --frozen --no-dev
 
 # ── 运行时阶段 ────────────────────────────────────────────────────────────────
 FROM python:3.11-slim AS runtime
 
 WORKDIR /app
+
+# 换用阿里云 apt 镜像（Debian trixie）
+RUN echo 'Types: deb\nURIs: https://mirrors.aliyun.com/debian\nSuites: trixie trixie-updates\nComponents: main contrib non-free non-free-firmware\nSigned-By: /usr/share/keyrings/debian-archive-keyring.gpg' \
+    > /etc/apt/sources.list.d/debian.sources
 
 # 安装运行时系统依赖
 RUN apt-get update && apt-get install -y \

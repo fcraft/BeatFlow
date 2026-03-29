@@ -3,8 +3,9 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# 安装 pnpm
+# 安装 pnpm，配置国内镜像
 RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN pnpm config set registry https://registry.npmmirror.com
 
 # 先复制依赖声明，利用 Docker 缓存
 COPY package.json pnpm-lock.yaml* ./

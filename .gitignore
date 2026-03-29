@@ -13,9 +13,11 @@ venv/
 .pytest_cache/
 pytest-of-root/
 
-# Environment & secrets
+# Environment & secrets — 不提交真实密钥
 .env
+.env.local
 *.env.local
+# .env.example 是模板，需要提交，不在忽略列表
 
 # Node / Frontend
 node_modules/

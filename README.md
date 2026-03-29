@@ -24,12 +24,35 @@
 
 ## 快速开始
 
-### Docker 一键启动（推荐）
+### 方式一：生产部署（推荐，使用预构建镜像）
 
-仅需安装 Docker 及 Docker Compose，无需本地配置 Python / Node / PostgreSQL。
+直接拉取 Docker Hub 镜像，无需本地编译，适合服务器部署。
 
 ```bash
-# 启动所有服务（PostgreSQL + 后端 + 前端）
+# 1. 复制并编辑环境变量（务必修改密码和 JWT 密钥）
+cp .env.example .env
+# 必须修改：POSTGRES_PASSWORD、JWT_SECRET_KEY、DOCKERHUB_USERNAME
+
+# 2. 启动所有服务
+docker-compose -f docker-compose.prod.yml up -d
+
+# 查看运行状态
+docker-compose -f docker-compose.prod.yml ps
+
+# 更新到最新版本
+docker-compose -f docker-compose.prod.yml pull
+docker-compose -f docker-compose.prod.yml up -d
+```
+
+### 方式二：本地构建启动（开发者）
+
+从源码构建镜像，适合二次开发。
+
+```bash
+# 1. 复制并编辑环境变量
+cp .env.example .env
+
+# 2. 构建并启动
 docker-compose up -d --build
 
 # 查看运行状态
@@ -42,6 +65,18 @@ docker-compose logs -f
 服务启动后：
 - 前端：http://localhost:3000
 - 后端 API 文档：http://localhost:3090/docs
+
+### 环境变量说明
+
+| 变量 | 必填 | 说明 |
+|------|------|------|
+| `POSTGRES_PASSWORD` | ✅ | 数据库密码，生产环境必须修改 |
+| `JWT_SECRET_KEY` | ✅ | JWT 签名密钥，可用 `openssl rand -hex 32` 生成 |
+| `DOCKERHUB_USERNAME` | ✅（prod） | Docker Hub 用户名，用于拉取预构建镜像 |
+| `POSTGRES_DB` | 可选 | 数据库名，默认 `beat_flow` |
+| `POSTGRES_USER` | 可选 | 数据库用户，默认 `beat_flow_user` |
+| `CORS_ORIGINS` | 可选 | CORS 白名单，生产环境建议改为实际域名 |
+| `IMAGE_TAG` | 可选 | 镜像 tag，默认 `latest`，可指定为 commit SHA |
 
 ---
 
@@ -73,10 +108,11 @@ pnpm dev
 
 ### 环境变量（`backend/.env`）
 
+后端本地开发时，在 `backend/` 目录单独维护 `.env`：
+
 ```bash
-DATABASE_URL=postgresql+asyncpg://beat_flow_user:beat_flow_password@localhost:5432/beat_flow
-JWT_SECRET_KEY=your-secret-key
-UPLOAD_DIR=./uploads
+cp backend/.env.example backend/.env
+# 按需修改 DATABASE_URL、JWT_SECRET_KEY 等
 ```
 
 ## 项目结构

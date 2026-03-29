@@ -1,11 +1,14 @@
 version: '3.8'
 
-# 开发 / 本地构建模式：从源码构建镜像
-# 生产部署请使用 docker-compose.prod.yml
+# 生产部署模式：直接拉取 Docker Hub 预构建镜像，无需本地编译
 #
 # 使用方法：
-#   cp .env.example .env   # 首次使用，按需修改 .env
-#   docker-compose up -d --build
+#   cp .env.example .env           # 首次使用，务必修改所有密码
+#   docker-compose -f docker-compose.prod.yml up -d
+#
+# 更新到最新版本：
+#   docker-compose -f docker-compose.prod.yml pull
+#   docker-compose -f docker-compose.prod.yml up -d
 
 services:
   postgres:
@@ -17,9 +20,6 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required, copy .env.example to .env}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./backend/scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
-    # 不对外暴露端口，仅内网访问
-    # 如需本地调试数据库，临时改为 "127.0.0.1:5432:5432"
     expose:
       - "5432"
     networks:
@@ -29,11 +29,10 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
 
   backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    image: fcraft/beatflow-backend:${IMAGE_TAG:-latest}
     container_name: beat-flow-backend
     environment:
       - APP_ENV=production
@@ -55,9 +54,7 @@ services:
     restart: unless-stopped
 
   frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
+    image: fcraft/beatflow-frontend:${IMAGE_TAG:-latest}
     container_name: beat-flow-frontend
     ports:
       - "3000:80"
