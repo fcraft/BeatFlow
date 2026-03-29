@@ -12,10 +12,10 @@ import wave
 from typing import List, Optional
 
 import numpy as np
-from fastapi import APIRouter, HTTPException, Query, status
-from pydantic import BaseModel, Field
 from scipy.signal import butter, sosfilt, resample_poly
 from scipy.io import wavfile
+from fastapi import APIRouter, HTTPException, Query, status
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 import app.models  # noqa: F401
