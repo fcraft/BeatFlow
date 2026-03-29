@@ -1,5 +1,3 @@
-version: '3.8'
-
 # 生产部署模式：直接拉取 Docker Hub 预构建镜像，无需本地编译
 #
 # 使用方法：
@@ -41,6 +39,8 @@ services:
       - STORAGE_TYPE=${STORAGE_TYPE:-local}
       - LOCAL_STORAGE_PATH=/app/storage
       - CORS_ORIGINS=${CORS_ORIGINS:-["*"]}
+      # worker 数 = CPU 核心数，内存不足时设为 1
+      - UVICORN_WORKERS=${UVICORN_WORKERS:-1}
     volumes:
       - media_storage:/app/storage
       - uploads:/app/uploads

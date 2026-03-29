@@ -71,4 +71,6 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
 
 EXPOSE 3090
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "3090", "--workers", "4"]
+# workers 数量建议 = CPU 核心数，默认 1（单核场景）
+# 可通过环境变量覆盖：UVICORN_WORKERS=4
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port 3090 --workers ${UVICORN_WORKERS:-1}"]
