@@ -33,6 +33,9 @@ server {
     root /usr/share/nginx/html;
     index index.html;
 
+    # 允许最大上传体积（与后端 MAX_FILE_SIZE_MB 保持一致）
+    client_max_body_size 512M;
+
     # gzip
     gzip on;
     gzip_types text/plain text/css application/json application/javascript text/xml application/xml text/javascript image/svg+xml;
