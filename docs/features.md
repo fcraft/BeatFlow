@@ -465,6 +465,8 @@ FileAssociation {
 ### 功能描述
 用户可以分享分析结果、心音/心电案例，支持讨论和点赞。
 
+发帖时可关联文件：通过 `ProjectPicker` 选择项目 + `FilePicker` 选择文件（两个组件均基于 `AppSelect`，内置搜索）。
+
 ### 接口列表
 | 方法 | 路径 | 描述 |
 |------|------|------|
@@ -925,6 +927,7 @@ v2 `SimulationPipeline.apply_command()` 仅实现 12/48 个交互命令（25%）
 | `BpmPanel` | `components/ui/BpmPanel.vue` | 心率数值显示面板 |
 | `DetectionPanel` | `components/ui/DetectionPanel.vue` | 自动检测结果展示 |
 | `ProjectPicker` | `components/ui/ProjectPicker.vue` | 项目选择器（基于 AppSelect，搜索+内联创建新项目，支持暗色模式） |
+| `FilePicker` | `components/ui/FilePicker.vue` | 文件选择器（基于 AppSelect，接收 `project-id` 自动加载文件列表，搜索+类型 badge，可选 `file-type` 按类型过滤，支持暗色模式） |
 | `AppSelect` | `components/ui/AppSelect.vue` | 通用下拉选择器（毛玻璃风格，Teleport 挂载到 body，支持搜索、图标、badge、暗色模式、footer slot） |
 | `AppCheckbox` | `components/ui/AppCheckbox.vue` | 自定义复选框（圆角方框 + SVG 勾选动画 + v-model 双向绑定，支持 label/disabled） |
 | `AppSegment` | `components/ui/AppSegment.vue` | 分段选择器（互斥按钮组，支持 xs/sm/md 尺寸，block 撑满模式） |

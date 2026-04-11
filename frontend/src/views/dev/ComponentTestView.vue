@@ -15,6 +15,8 @@ import AppMiniSelect from '@/components/ui/AppMiniSelect.vue'
 import AppDropdown from '@/components/ui/AppDropdown.vue'
 import { Download, ChevronDown, FileText } from 'lucide-vue-next'
 import { useToastStore } from '@/store/toast'
+import ProjectPicker from '@/components/ui/ProjectPicker.vue'
+import FilePicker from '@/components/ui/FilePicker.vue'
 
 const toast = useToastStore()
 
@@ -111,6 +113,10 @@ const miniTypeOptions = [
   { value: 'ecg', label: 'ECG' }, { value: 'pcg', label: 'PCG' },
   { value: 'audio', label: '音频' }, { value: 'video', label: '视频' },
 ]
+
+// ─── ProjectPicker & FilePicker demo ───
+const pickerProjectId = ref('')
+const pickerFileId = ref('')
 </script>
 
 <template>
@@ -302,6 +308,27 @@ const miniTypeOptions = [
             </template>
           </AppDropdown>
         </div>
+      </section>
+
+      <!-- ─── ProjectPicker & FilePicker ─── -->
+      <section>
+        <h2 class="text-lg font-semibold text-gray-800 mb-1">ProjectPicker & FilePicker</h2>
+        <p class="text-sm text-gray-500 mb-4">项目选择器（支持搜索+新建）和文件选择器（依赖项目 ID、支持搜索+类型 badge）</p>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-lg">
+          <div>
+            <label class="label">选择项目</label>
+            <ProjectPicker v-model="pickerProjectId" />
+          </div>
+          <div>
+            <label class="label">选择文件</label>
+            <FilePicker v-model="pickerFileId" :project-id="pickerProjectId" :placeholder="pickerProjectId ? '请选择文件' : '请先选择项目'" />
+          </div>
+        </div>
+        <p class="text-xs text-gray-400 mt-2">
+          项目 ID：<code class="bg-gray-100 px-1 rounded">{{ pickerProjectId || '—' }}</code>　
+          文件 ID：<code class="bg-gray-100 px-1 rounded">{{ pickerFileId || '—' }}</code>
+        </p>
       </section>
 
       <!-- ─── Typography ─── -->

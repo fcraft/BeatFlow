@@ -106,12 +106,9 @@
         </div>
         <div>
           <label class="label">关联文件（可选）</label>
-          <select v-model="newPost.file_id" class="input w-full">
-            <option value="">不关联文件</option>
-            <option v-for="f in myFiles" :key="f.id" :value="f.id">
-              {{ f.original_filename || f.filename }}（{{ FILE_TYPE_LABELS[f.file_type] ?? f.file_type }}）
-            </option>
-          </select>
+          <ProjectPicker v-model="selectedProjectId" placeholder="选择项目…" />
+          <FilePicker v-if="selectedProjectId" v-model="newPost.file_id"
+            :project-id="selectedProjectId" placeholder="选择文件…" class="mt-2" />
         </div>
         <div>
           <label class="label">标签（回车添加）</label>
@@ -217,10 +214,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { Plus, Search, X, MessageSquare, Heart, Eye, Activity, ChevronLeft, ChevronRight, Trash2, Send } from 'lucide-vue-next'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import AppModal from '@/components/ui/AppModal.vue'
+import ProjectPicker from '@/components/ui/ProjectPicker.vue'
+import FilePicker from '@/components/ui/FilePicker.vue'
 import { useAuthStore } from '@/store/auth'
 import { useToastStore } from '@/store/toast'
 
@@ -235,10 +234,6 @@ const canDeleteComment = (comment: any) =>
   comment.author_id === currentUserId.value ||
   selectedPost.value?.author_id === currentUserId.value ||
   isAdmin.value
-
-const FILE_TYPE_LABELS: Record<string, string> = {
-  audio: 'Audio', video: 'Video', ecg: 'ECG', pcg: 'PCG', other: '其他',
-}
 
 // ── List state ────────────────────────────────────────────────────
 const posts = ref<any[]>([])
@@ -277,15 +272,12 @@ const formatDate = (iso: string) => {
   return d.toLocaleDateString('zh-CN')
 }
 
-// ── My files (for linking) ─────────────────────────────────────────
-const myFiles = ref<any[]>([])
-const loadMyFiles = async () => {
-  const r = await fetch('/api/v1/files/', { headers: authHeader.value })
-  if (r.ok) {
-    const d = await r.json()
-    myFiles.value = d.items || []
-  }
-}
+// ── Project & file linking (via ProjectPicker + FilePicker) ────────
+const selectedProjectId = ref('')
+
+watch(selectedProjectId, () => {
+  newPost.value.file_id = ''
+})
 
 // ── New post ──────────────────────────────────────────────────────
 const showNewPost = ref(false)
@@ -313,6 +305,7 @@ const submitPost = async () => {
     toast.success('帖子已发布')
     showNewPost.value = false
     newPost.value = { title: '', content: '', file_id: '', tags: [] }
+    selectedProjectId.value = ''
     fetchPosts(true)
   } else {
     const e = await r.json().catch(() => ({}))
@@ -409,6 +402,5 @@ const deleteComment = async (commentId: string) => {
 
 onMounted(() => {
   fetchPosts()
-  loadMyFiles()
 })
 </script>

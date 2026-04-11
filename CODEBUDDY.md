@@ -38,6 +38,8 @@ BeatFlow 是 ECG/PCG 心音心电数据管理平台。
 6. **测试必须覆盖降级路径**：单元测试中 mock 浏览器 API 时，**必须同时测试 API 可用和不可用两种场景**，不能只 mock 正常路径
 7. **新增 UI 公共组件**：在 `src/components/ui/` 下新增公共组件后，**必须**在 `src/views/dev/ComponentTestView.vue`（`/dev/components` 页面）中添加对应的演示区块，确保组件可被可视化预览和测试
 8. **浮层 z-index 管理**：所有 Teleport 浮层（下拉/Popover/Modal）使用 `nextZIndex()`（`src/constants/zIndex.ts`）动态获取层级，**不要**硬编码 `z-[9999]`。Toast 使用固定 `Z_TOAST = 99999`
+9. **组件选择**：`src/components/ui/` 中已经封装了很多 UI 组件，不要重复编写代码。如有必要新增组件时，需要考虑是否可以抽象为公共组件
+10. **Store 优先**：数据获取优先使用已有的 Pinia Store（如 `useProjectStore` 的 `fetchProjects`/`fetchProjectFiles`），**不要**在页面中重复编写 `fetch('/api/v1/...')` 调用已有 Store 能力覆盖的接口
 
 ## 开发完成检查清单（强制）
 
