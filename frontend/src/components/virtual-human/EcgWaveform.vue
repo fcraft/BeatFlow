@@ -146,7 +146,7 @@ function roundRect(
 /** Feature 2: 将 store 的 smoothingLevel 包装为 computed ref */
 const smoothingLevel = computed(() => store.ecgSmoothingLevel)
 
-const { appendSamples, start, stop } = useScrollingCanvas({
+const { appendSamples, start, stop, reset } = useScrollingCanvas({
   canvasRef,
   sampleRate: 500,
   displaySeconds: 5,
@@ -179,6 +179,9 @@ watch(() => store.caliperMode, (on) => {
     start()
   }
 })
+
+// Reset buffer on lead change
+watch(() => store.selectedLeads, () => { reset() }, { deep: true })
 
 function onCaliperClick(e: MouseEvent) {
   const canvas = overlayCanvasRef.value

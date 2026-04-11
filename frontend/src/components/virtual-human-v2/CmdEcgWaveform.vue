@@ -56,7 +56,7 @@ const smoothingLevel = computed(() => store.ecgSmoothingLevel)
 const screenW = typeof window !== 'undefined' ? window.innerWidth : 1024
 const dispSec = screenW < 768 ? 2.5 : screenW < 1024 ? 3.5 : 5
 
-const { appendSamples, start, stop } = useScrollingCanvas({
+const { appendSamples, start, stop, reset } = useScrollingCanvas({
   canvasRef,
   sampleRate: 500,
   displaySeconds: dispSec,
@@ -82,6 +82,9 @@ watch(() => store.caliperMode, (on) => {
   if (on) { stop(); caliper.enter(new Float32Array(0)) }
   else { caliper.exit(); start() }
 })
+
+// Reset buffer on lead change to prevent stale waveform residue
+watch(() => store.selectedLeads, () => { reset() }, { deep: true })
 
 function onCaliperClick(e: MouseEvent) {
   const canvas = overlayCanvasRef.value
