@@ -179,6 +179,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { Upload, Filter, Eye, Download, Trash2, FileX, AlertTriangle, Music, Video, Activity, File, Search, X, Share2 } from 'lucide-vue-next'
 import AppModal from '@/components/ui/AppModal.vue'
+import AppMiniSelect from '@/components/ui/AppMiniSelect.vue'
 import ShareModal from '@/components/share/ShareModal.vue'
 import { useProjectStore } from '@/store/project'
 import { useToastStore } from '@/store/toast'
@@ -203,6 +204,19 @@ const shareFile = ref<MediaFile | null>(null)
 const filterType = ref('')
 const sortBy = ref('date')
 const searchQuery = ref('')
+
+const FILE_TYPE_FILTER_OPTIONS = [
+  { value: '', label: '全部类型' },
+  { value: 'audio', label: '音频' },
+  { value: 'video', label: '视频' },
+  { value: 'ecg', label: 'ECG' },
+  { value: 'pcg', label: 'PCG' },
+]
+const SORT_OPTIONS = [
+  { value: 'name', label: '按名称' },
+  { value: 'size', label: '按大小' },
+  { value: 'date', label: '按时间' },
+]
 
 const filteredFiles = computed(() => {
   let files = [...projectStore.projectFiles]

@@ -115,7 +115,7 @@ function cardVar(type: string) {
 /* ─── Container positioning ─── */
 .toast-container {
   position: fixed;
-  z-index: 9999;
+  z-index: 99999;
   pointer-events: none;
 }
 .toast-container--desktop {

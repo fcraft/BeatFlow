@@ -43,12 +43,13 @@
         <div
           v-if="isOpen"
           ref="dropdownRef"
-          class="fixed z-[9999] rounded-xl overflow-hidden"
+          data-app-select-dropdown
+          class="fixed rounded-xl overflow-hidden"
           :class="dark
             ? 'bg-gray-950/60 backdrop-blur-2xl backdrop-saturate-[1.8] border border-white/[0.15] ring-1 ring-black/30 shadow-2xl'
             : 'bg-white/80 backdrop-blur-xl backdrop-saturate-[1.6] border border-gray-200/60 ring-1 ring-black/[0.04] shadow-xl'
           "
-          :style="posStyle"
+          :style="{ ...posStyle, zIndex: dropdownZIndex }"
         >
           <!-- Search (optional) -->
           <div v-if="searchable" class="px-3 py-2 border-b" :class="dark ? 'border-white/[0.08]' : 'border-gray-100'">
@@ -106,6 +107,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, nextTick, onMounted, onUnmounted, type Component } from 'vue'
 import { ChevronDown, Search, Check } from 'lucide-vue-next'
+import { nextZIndex } from '@/constants/zIndex'
 
 export interface SelectOption {
   value: string | number
@@ -137,6 +139,7 @@ const emit = defineEmits<{
 
 const isOpen = ref(false)
 const query = ref('')
+const dropdownZIndex = ref(9000)
 
 const wrapperRef = ref<HTMLElement | null>(null)
 const triggerRef = ref<HTMLElement | null>(null)
@@ -172,6 +175,7 @@ const filteredOptions = computed(() => {
 function toggle() {
   isOpen.value = !isOpen.value
   if (isOpen.value) {
+    dropdownZIndex.value = nextZIndex()
     query.value = ''
     nextTick(() => {
       updatePos()

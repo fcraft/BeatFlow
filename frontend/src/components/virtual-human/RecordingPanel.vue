@@ -15,6 +15,7 @@ import { useProjectStore } from '@/store/project'
 import { useToastStore } from '@/store/toast'
 import { AUSCULTATION_AREAS } from '@/composables/useAuscultation'
 import type { AuscultationArea } from '@/composables/useAuscultation'
+import { nextZIndex } from '@/constants/zIndex'
 
 const vhStore = useVirtualHumanStore()
 const projectStore = useProjectStore()
@@ -31,6 +32,7 @@ const selectedProjectId = ref('')
 const showPanel = ref(false)
 const uploading = ref(false)
 const uploadProgress = ref('')
+const panelZIndex = ref(9000)
 
 const panelRef = ref<HTMLElement | null>(null)
 const triggerRef = ref<HTMLElement | null>(null)
@@ -66,8 +68,8 @@ function onClickOutside(e: MouseEvent) {
   if (triggerRef.value?.contains(target)) return
   // 检查是否在 Teleport 出去的面板内
   if (dropdownRef.value?.contains(target)) return
-  // 检查是否在 ProjectPicker 的 Teleport 下拉面板内（已挂载到 body，不在 panelRef DOM 子树中）
-  if (target.closest?.('[data-project-picker-dropdown]')) return
+  // 检查是否在 AppSelect 的 Teleport 下拉面板内（ProjectPicker 基于 AppSelect，下拉挂载到 body）
+  if (target.closest?.('[data-app-select-dropdown]')) return
   showPanel.value = false
 }
 
@@ -170,6 +172,16 @@ function handleCancel() {
   toast.info('录制已取消')
 }
 
+/** 修正文件类型（后端按扩展名默认为 audio，需要 patch 为 ecg/pcg） */
+async function patchFileType(fileId: string, fileType: 'ecg' | 'pcg') {
+  const token = localStorage.getItem('token')
+  await fetch(`/api/v1/files/${fileId}/type`, {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ file_type: fileType }),
+  })
+}
+
 async function uploadToProject(projectId: string, ecgBlob: Blob, pcgBlob: Blob) {
   uploading.value = true
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
@@ -185,6 +197,7 @@ async function uploadToProject(projectId: string, ecgBlob: Blob, pcgBlob: Blob) 
       toast.error('ECG 文件上传失败')
       return
     }
+    await patchFileType(ecgResult.id, 'ecg')
 
     uploadProgress.value = '上传 PCG...'
     const pcgFile = new File([pcgBlob], `VH_PCG${modeLabel}_${timestamp}.wav`, { type: 'audio/wav' })
@@ -193,6 +206,7 @@ async function uploadToProject(projectId: string, ecgBlob: Blob, pcgBlob: Blob) 
       toast.error('PCG 文件上传失败')
       return
     }
+    await patchFileType(pcgResult.id, 'pcg')
 
     uploadProgress.value = '刷新项目文件...'
     await projectStore.fetchProjectFiles(projectId)
@@ -212,6 +226,7 @@ async function uploadToProject(projectId: string, ecgBlob: Blob, pcgBlob: Blob) 
 function togglePanel() {
   showPanel.value = !showPanel.value
   if (showPanel.value) {
+    panelZIndex.value = nextZIndex()
     updateDropdownPos()
   }
 }
@@ -250,8 +265,8 @@ function togglePanel() {
         <div
           v-if="showPanel"
           ref="dropdownRef"
-          class="fixed z-[9999] w-80 bg-gray-950/60 backdrop-blur-2xl backdrop-saturate-[1.8] border border-white/[0.15] rounded-xl shadow-2xl ring-1 ring-black/30"
-          :style="{ top: dropdownPos.top + 'px', right: dropdownPos.right + 'px' }"
+          class="fixed w-80 bg-gray-950/60 backdrop-blur-2xl backdrop-saturate-[1.8] border border-white/[0.15] rounded-xl shadow-2xl ring-1 ring-black/30"
+          :style="{ top: dropdownPos.top + 'px', right: dropdownPos.right + 'px', zIndex: panelZIndex }"
         >
         <!-- 面板头部 -->
         <div class="px-4 py-3 border-b border-white/[0.08]">

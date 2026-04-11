@@ -10,6 +10,10 @@ import AppModal from '@/components/ui/AppModal.vue'
 import AppCheckbox from '@/components/ui/AppCheckbox.vue'
 import AppSwitch from '@/components/ui/AppSwitch.vue'
 import AppSelect from '@/components/ui/AppSelect.vue'
+import AppSegment from '@/components/ui/AppSegment.vue'
+import AppMiniSelect from '@/components/ui/AppMiniSelect.vue'
+import AppDropdown from '@/components/ui/AppDropdown.vue'
+import { Download, ChevronDown, FileText } from 'lucide-vue-next'
 import { useToastStore } from '@/store/toast'
 
 const toast = useToastStore()
@@ -79,6 +83,33 @@ const selectOptions = [
   { value: 'guangzhou', label: '广州' },
   { value: 'shenzhen', label: '深圳' },
   { value: 'hangzhou', label: '杭州' },
+]
+
+// ─── Segment demo ───
+const segMode = ref('a')
+const segSize = ref('sm')
+const segOptions = [
+  { value: 'a', label: '选项 A' },
+  { value: 'b', label: '选项 B' },
+  { value: 'c', label: '选项 C' },
+]
+const segSizeOptions = [
+  { value: 'xs', label: 'XS' },
+  { value: 'sm', label: 'SM' },
+  { value: 'md', label: 'MD' },
+]
+
+// ─── MiniSelect demo ───
+const miniVal = ref(5)
+const miniStr = ref('ecg')
+const miniOptions = [
+  { value: 1, label: '1 秒' }, { value: 2, label: '2 秒' },
+  { value: 5, label: '5 秒' }, { value: 10, label: '10 秒' },
+  { value: 30, label: '30 秒' },
+]
+const miniTypeOptions = [
+  { value: 'ecg', label: 'ECG' }, { value: 'pcg', label: 'PCG' },
+  { value: 'audio', label: '音频' }, { value: 'video', label: '视频' },
 ]
 </script>
 
@@ -180,6 +211,96 @@ const selectOptions = [
               <AppSelect v-model="sel2" :options="selectOptions" placeholder="选择城市" searchable search-placeholder="搜索城市..." block />
             </div>
           </div>
+        </div>
+      </section>
+
+      <!-- ─── Segment ─── -->
+      <section>
+        <h2 class="text-lg font-semibold text-gray-800 mb-1">Segment 分段选择器</h2>
+        <p class="text-sm text-gray-500 mb-4">互斥按钮组，支持 xs/sm/md 三种尺寸</p>
+
+        <div class="space-y-4">
+          <div class="flex flex-wrap items-center gap-4">
+            <div>
+              <label class="label mb-1">尺寸切换</label>
+              <AppSegment v-model="segSize" :options="segSizeOptions" size="xs" />
+            </div>
+            <div>
+              <label class="label mb-1">当前尺寸：{{ segSize }}</label>
+              <AppSegment v-model="segMode" :options="segOptions" :size="segSize as any" />
+            </div>
+          </div>
+          <div>
+            <label class="label mb-1">Block 模式（撑满宽度）</label>
+            <AppSegment v-model="segMode" :options="segOptions" size="sm" block class="max-w-sm" />
+          </div>
+          <p class="text-xs text-gray-400">当前值：<code class="bg-gray-100 px-1 rounded">{{ segMode }}</code></p>
+        </div>
+      </section>
+
+      <!-- ─── MiniSelect ─── -->
+      <section>
+        <h2 class="text-lg font-semibold text-gray-800 mb-1">MiniSelect 紧凑下拉</h2>
+        <p class="text-sm text-gray-500 mb-4">自绘下拉（非系统原生），支持 xs/sm/md 尺寸、numeric 模式</p>
+
+        <div class="flex flex-wrap items-end gap-6">
+          <div>
+            <label class="label">数值（numeric）</label>
+            <AppMiniSelect v-model="miniVal" :options="miniOptions" size="sm" numeric />
+          </div>
+          <div>
+            <label class="label">字符串</label>
+            <AppMiniSelect v-model="miniStr" :options="miniTypeOptions" size="sm" />
+          </div>
+          <div>
+            <label class="label">XS 尺寸</label>
+            <AppMiniSelect v-model="miniVal" :options="miniOptions" size="xs" numeric />
+          </div>
+          <div>
+            <label class="label">MD 尺寸</label>
+            <AppMiniSelect v-model="miniStr" :options="miniTypeOptions" size="md" />
+          </div>
+          <div>
+            <label class="label">禁用</label>
+            <AppMiniSelect v-model="miniStr" :options="miniTypeOptions" size="sm" disabled />
+          </div>
+        </div>
+        <p class="text-xs text-gray-400 mt-2">数值：<code class="bg-gray-100 px-1 rounded">{{ miniVal }}</code> ({{ typeof miniVal }})　字符串：<code class="bg-gray-100 px-1 rounded">{{ miniStr }}</code></p>
+      </section>
+
+      <!-- ─── Dropdown ─── -->
+      <section>
+        <h2 class="text-lg font-semibold text-gray-800 mb-1">Dropdown 下拉菜单</h2>
+        <p class="text-sm text-gray-500 mb-4">通用 trigger + 菜单项，Teleport + 动态 z-index</p>
+
+        <div class="flex gap-4">
+          <AppDropdown>
+            <template #trigger="{ isOpen }">
+              <button class="btn-primary btn-sm flex items-center gap-1">
+                操作菜单
+                <ChevronDown class="w-3 h-3" :class="isOpen && 'rotate-180'" style="transition: transform 0.15s" />
+              </button>
+            </template>
+            <template #default="{ close }">
+              <button class="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 flex items-center gap-2" @click="toast.success('导出成功'); close()">
+                <FileText class="w-3.5 h-3.5 text-green-600" />导出 CSV
+              </button>
+              <button class="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 flex items-center gap-2" @click="toast.info('已复制'); close()">
+                <Download class="w-3.5 h-3.5 text-blue-600" />下载文件
+              </button>
+            </template>
+          </AppDropdown>
+
+          <AppDropdown>
+            <template #trigger>
+              <button class="test-btn test-btn--slate">更多选项 ▾</button>
+            </template>
+            <template #default="{ close }">
+              <button class="w-full text-left px-4 py-2 text-sm hover:bg-gray-50" @click="close()">选项 A</button>
+              <button class="w-full text-left px-4 py-2 text-sm hover:bg-gray-50" @click="close()">选项 B</button>
+              <button class="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50" @click="close()">危险操作</button>
+            </template>
+          </AppDropdown>
         </div>
       </section>
 

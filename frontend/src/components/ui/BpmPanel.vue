@@ -3,75 +3,44 @@
     <!-- Controls -->
     <div class="flex flex-wrap items-center gap-3">
       <!-- Mode -->
-      <div class="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
-        <button
-          v-for="m in MODES"
-          :key="m.value"
-          class="px-3 py-1 text-xs font-medium rounded-md transition-colors"
-          :class="mode === m.value ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'"
-          @click="mode = m.value"
-        >{{ m.label }}</button>
-      </div>
+      <AppSegment v-model="mode" :options="MODES" size="xs" />
 
       <!-- Window size (time mode) -->
-      <template v-if="mode === 'time'">
-        <label class="text-xs text-gray-500 shrink-0">窗口</label>
-        <select v-model.number="windowSec" class="select w-24 text-xs py-1">
-          <option :value="1">1 秒</option>
-          <option :value="2">2 秒</option>
-          <option :value="5">5 秒</option>
-          <option :value="10">10 秒</option>
-          <option :value="30">30 秒</option>
-          <option :value="60">60 秒</option>
-        </select>
-      </template>
+      <div v-if="mode === 'time'" class="flex items-baseline gap-1.5">
+        <label class="text-[11px] text-gray-500 shrink-0">窗口</label>
+        <AppMiniSelect v-model="windowSec" :options="WINDOW_OPTIONS" size="xs" numeric />
+      </div>
 
       <!-- N beats (beat mode) -->
-      <template v-else>
-        <label class="text-xs text-gray-500 shrink-0">相邻</label>
-        <select v-model.number="nBeats" class="select w-20 text-xs py-1">
-          <option :value="1">1 拍</option>
-          <option :value="2">2 拍</option>
-          <option :value="3">3 拍</option>
-          <option :value="4">4 拍</option>
-          <option :value="5">5 拍</option>
-          <option :value="8">8 拍</option>
-        </select>
-        <span class="text-xs text-gray-400">移动平均</span>
-      </template>
+      <div v-else class="flex items-baseline gap-1.5">
+        <label class="text-[11px] text-gray-500 shrink-0">相邻</label>
+        <AppMiniSelect v-model="nBeats" :options="NBEAT_OPTIONS" size="xs" numeric />
+        <span class="text-[11px] text-gray-400">移动平均</span>
+      </div>
 
       <!-- Beat type selector -->
       <label class="text-xs text-gray-500 shrink-0">Beat 类型</label>
-      <div class="flex items-center gap-1">
-        <button
-          v-for="bt in availableBeatTypes"
-          :key="bt"
-          class="px-2 py-1 text-xs rounded-md border transition-colors"
-          :class="beatType === bt
-            ? 'border-blue-500 bg-blue-50 text-blue-700'
-            : 'border-gray-200 text-gray-500 hover:border-blue-300'"
-          @click="beatType = bt"
-        >{{ bt.toUpperCase() }}</button>
-      </div>
+      <AppSegment v-model="beatType" :options="beatTypeOptions" size="xs" />
 
       <div class="flex-1" />
 
       <!-- Export -->
-      <div class="relative" ref="exportMenuRef">
-        <button class="btn-secondary btn-sm" :disabled="bpmPoints.length === 0" @click="showExportMenu = !showExportMenu">
-          <Download class="w-3.5 h-3.5" />导出
-          <ChevronDown class="w-3 h-3" />
-        </button>
-        <div v-if="showExportMenu"
-          class="absolute right-0 top-full mt-1 w-36 bg-white border border-gray-200 rounded-xl shadow-lg z-10 py-1 text-sm">
-          <button class="w-full text-left px-4 py-2 hover:bg-gray-50 flex items-center gap-2" @click="exportCSV">
+      <AppDropdown>
+        <template #trigger="{ isOpen }">
+          <button class="btn-secondary btn-sm" :disabled="bpmPoints.length === 0">
+            <Download class="w-3.5 h-3.5" />导出
+            <ChevronDown class="w-3 h-3 transition-transform" :class="isOpen && 'rotate-180'" />
+          </button>
+        </template>
+        <template #default="{ close }">
+          <button class="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 flex items-center gap-2" @click="exportCSV(); close()">
             <FileText class="w-3.5 h-3.5 text-green-600" />导出 CSV
           </button>
-          <button class="w-full text-left px-4 py-2 hover:bg-gray-50 flex items-center gap-2" @click="exportJSON">
+          <button class="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 flex items-center gap-2" @click="exportJSON(); close()">
             <Braces class="w-3.5 h-3.5 text-blue-600" />导出 JSON
           </button>
-        </div>
-      </div>
+        </template>
+      </AppDropdown>
     </div>
 
     <!-- Stats row -->
@@ -119,6 +88,9 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { Download, ChevronDown, FileText, Activity } from 'lucide-vue-next'
 import { Braces } from 'lucide-vue-next'
+import AppSegment from '@/components/ui/AppSegment.vue'
+import AppMiniSelect from '@/components/ui/AppMiniSelect.vue'
+import AppDropdown from '@/components/ui/AppDropdown.vue'
 
 interface Annotation {
   id: string
@@ -149,12 +121,27 @@ const windowSec = ref(5)
 const nBeats = ref(1)
 const beatType = ref('s1')
 
+const WINDOW_OPTIONS = [
+  { value: 1, label: '1 秒' }, { value: 2, label: '2 秒' },
+  { value: 5, label: '5 秒' }, { value: 10, label: '10 秒' },
+  { value: 30, label: '30 秒' }, { value: 60, label: '60 秒' },
+]
+const NBEAT_OPTIONS = [
+  { value: 1, label: '1 拍' }, { value: 2, label: '2 拍' },
+  { value: 3, label: '3 拍' }, { value: 4, label: '4 拍' },
+  { value: 5, label: '5 拍' }, { value: 8, label: '8 拍' },
+]
+
 // ── Available beat types ──────────────────────────────────────────
 const BEAT_TYPES = ['s1', 's2', 'qrs', 'p_wave', 'r_peak']
 const availableBeatTypes = computed(() => {
   const types = new Set(props.annotations.map(a => a.annotation_type))
   return BEAT_TYPES.filter(t => types.has(t))
 })
+
+const beatTypeOptions = computed(() =>
+  availableBeatTypes.value.map(t => ({ value: t, label: t.toUpperCase() }))
+)
 
 // Auto-select first available beat type
 watch(availableBeatTypes, (types) => {
@@ -403,16 +390,6 @@ onUnmounted(() => {
 watch([bpmPoints, () => props.chartHeight], () => nextTick(draw))
 
 // ── Export ────────────────────────────────────────────────────────
-const showExportMenu = ref(false)
-const exportMenuRef = ref<HTMLElement | null>(null)
-
-const closeExportMenu = (e: MouseEvent) => {
-  if (exportMenuRef.value && !exportMenuRef.value.contains(e.target as Node)) {
-    showExportMenu.value = false
-  }
-}
-onMounted(() => document.addEventListener('click', closeExportMenu))
-onUnmounted(() => document.removeEventListener('click', closeExportMenu))
 
 const filename = () => {
   const modeStr = mode.value === 'time' ? `win${windowSec.value}s` : `n${nBeats.value}beats`
@@ -420,7 +397,6 @@ const filename = () => {
 }
 
 const exportCSV = () => {
-  showExportMenu.value = false
   if (bpmPoints.value.length === 0) return
   const header = 'time_s,bpm\n'
   const rows = bpmPoints.value.map(p => `${p.time.toFixed(4)},${p.bpm.toFixed(3)}`).join('\n')
@@ -431,7 +407,6 @@ const exportCSV = () => {
 }
 
 const exportJSON = () => {
-  showExportMenu.value = false
   if (bpmPoints.value.length === 0) return
   const data = {
     beat_type: beatType.value,

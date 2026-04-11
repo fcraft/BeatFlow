@@ -925,6 +925,9 @@ v2 `SimulationPipeline.apply_command()` 仅实现 12/48 个交互命令（25%）
 | `ProjectPicker` | `components/ui/ProjectPicker.vue` | 项目选择器（基于 AppSelect，搜索+内联创建新项目，支持暗色模式） |
 | `AppSelect` | `components/ui/AppSelect.vue` | 通用下拉选择器（毛玻璃风格，Teleport 挂载到 body，支持搜索、图标、badge、暗色模式、footer slot） |
 | `AppCheckbox` | `components/ui/AppCheckbox.vue` | 自定义复选框（圆角方框 + SVG 勾选动画 + v-model 双向绑定，支持 label/disabled） |
+| `AppSegment` | `components/ui/AppSegment.vue` | 分段选择器（互斥按钮组，支持 xs/sm/md 尺寸，block 撑满模式） |
+| `AppMiniSelect` | `components/ui/AppMiniSelect.vue` | 紧凑原生 select 封装（统一样式 + xs/sm/md 尺寸 + numeric 模式自动转数字） |
+| `AppDropdown` | `components/ui/AppDropdown.vue` | 通用下拉菜单（Teleport + nextZIndex 动态层级 + click-outside，trigger/default slot） |
 
 ### 项目相关组件
 | 组件 | 说明 |
