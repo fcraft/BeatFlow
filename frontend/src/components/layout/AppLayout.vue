@@ -19,14 +19,16 @@
         mobileOpen ? 'translate-x-0 w-60' : '-translate-x-full w-60',
       ]"
     >
-      <!-- Logo 占位（实际由 SharedLogo 渲染） -->
-      <div class="flex items-center gap-3 px-4 h-14 border-b border-gray-100 shrink-0">
-        <div class="w-8 h-8" />
+      <!-- Logo -->
+      <RouterLink to="/" class="flex items-center gap-2.5 px-4 h-14 border-b border-gray-100 shrink-0" @click="mobileOpen = false">
+        <div class="w-8 h-8 rounded-lg bg-primary-600 flex items-center justify-center shrink-0">
+          <HeartPulse class="w-4 h-4 text-white" />
+        </div>
         <span
           v-if="!collapsed"
-          class="font-bold text-transparent text-sm"
+          class="font-bold text-gray-900 text-sm"
         >BeatFlow</span>
-      </div>
+      </RouterLink>
 
       <!-- Nav -->
       <nav class="flex-1 px-3 py-4 space-y-1 overflow-y-auto">

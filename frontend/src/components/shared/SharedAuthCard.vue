@@ -179,12 +179,28 @@ const isVisible = computed(() => layout.value === 'login' || layout.value === 'r
 // ─── Content height tracking for smooth height transition ───
 const innerRef = ref<HTMLElement | null>(null)
 const contentHeight = ref(0)
+let observedForm: HTMLElement | null = null
+
+// Use ResizeObserver for dynamic content changes (e.g. error messages appearing)
+const ro = typeof ResizeObserver !== 'undefined'
+  ? new ResizeObserver(() => {
+      if (innerRef.value) {
+        const formEl = innerRef.value.querySelector('.shared-card__form') as HTMLElement | null
+        if (formEl) contentHeight.value = formEl.scrollHeight
+      }
+    })
+  : null
 
 function measureHeight() {
-  if (innerRef.value) {
-    const formEl = innerRef.value.querySelector('.shared-card__form') as HTMLElement
-    if (formEl) {
-      contentHeight.value = formEl.scrollHeight
+  if (!innerRef.value) return
+  const formEl = innerRef.value.querySelector('.shared-card__form') as HTMLElement | null
+  if (formEl) {
+    contentHeight.value = formEl.scrollHeight
+    // Observe the form element itself for content changes (e.g. error messages)
+    if (ro && formEl !== observedForm) {
+      if (observedForm) ro.unobserve(observedForm)
+      ro.observe(formEl)
+      observedForm = formEl
     }
   }
 }
@@ -196,14 +212,11 @@ watch(() => route.name, async () => {
   measureHeight()
 })
 
+watch(innerRef, (el) => {
+  if (el) nextTick(() => measureHeight())
+}, { immediate: true })
+
 onMounted(() => {
-  // Use ResizeObserver for dynamic content changes (e.g. error messages appearing)
-  if (typeof ResizeObserver !== 'undefined' && innerRef.value) {
-    const ro = new ResizeObserver(() => measureHeight())
-    watch(innerRef, (el) => {
-      if (el) ro.observe(el)
-    }, { immediate: true })
-  }
   nextTick(() => measureHeight())
 })
 
@@ -317,7 +330,6 @@ watch(() => route.name, () => {
 
 .shared-card__inner {
   width: 100%;
-  height: 100%;
   overflow-y: auto;
 }
 
@@ -381,7 +393,7 @@ watch(() => route.name, () => {
   }
 }
 
-/* ─── Fullscreen: expand to cover viewport ─── */
+/* ─── Fullscreen: expand to cover viewport then fade out ─── */
 .shared-card--fullscreen {
   top: 0;
   left: 0;
@@ -389,7 +401,7 @@ watch(() => route.name, () => {
   height: 100vh;
   border-radius: 0;
   transform: none;
-  opacity: 1;
+  opacity: 0;
   box-shadow: none;
 }
 

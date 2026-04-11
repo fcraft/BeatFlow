@@ -1,5 +1,6 @@
 <template>
   <div
+    v-if="isAuthOrHome"
     class="shared-logo"
     :class="layoutClass"
     :style="layoutStyle"
@@ -22,7 +23,7 @@ import { computed } from 'vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { HeartPulse } from 'lucide-vue-next'
 
-type LogoLayout = 'home' | 'auth-login' | 'auth-register' | 'workspace'
+type LogoLayout = 'home' | 'auth-login' | 'auth-register'
 
 const route = useRoute()
 const router = useRouter()
@@ -35,18 +36,15 @@ const props = defineProps<{
 const layout = computed<LogoLayout>(() => {
   const name = route.name as string
   if (name === 'home') return 'home'
-  if (name === 'login') return 'auth-login'
   if (name === 'register') return 'auth-register'
-  return 'workspace'
+  return 'auth-login'
 })
 
 const isAuthOrHome = computed(() =>
-  ['home', 'auth-login', 'auth-register'].includes(layout.value),
+  ['home', 'login', 'register'].includes(route.name as string),
 )
 
-const hideText = computed(() =>
-  layout.value === 'workspace' && props.collapsed,
-)
+const hideText = computed(() => false)
 
 const handleClick = () => {
   if (route.path !== '/') router.push('/')
@@ -59,7 +57,6 @@ const layoutClass = computed(() => {
     'home': 'shared-logo--home',
     'auth-login': 'shared-logo--auth-login',
     'auth-register': 'shared-logo--auth-register',
-    'workspace': 'shared-logo--workspace',
   }
   return map[layout.value]
 })
@@ -74,7 +71,6 @@ const iconSizeClass = computed(() => {
     'home': 'w-9 h-9 rounded-xl bg-primary-500',
     'auth-login': 'w-10 h-10 rounded-xl bg-primary-500',
     'auth-register': 'w-9 h-9 rounded-xl bg-primary-500',
-    'workspace': 'w-8 h-8 rounded-lg bg-primary-600',
   }
   return map[layout.value]
 })
@@ -84,18 +80,16 @@ const svgSizeClass = computed(() => {
     'home': 'w-5 h-5',
     'auth-login': 'w-5 h-5',
     'auth-register': 'w-5 h-5',
-    'workspace': 'w-4 h-4',
   }
   return map[layout.value]
 })
 
 const textClass = computed(() => {
-  const base = isAuthOrHome.value ? 'text-white' : 'text-gray-900'
+  const base = 'text-white'
   const sizeMap: Record<LogoLayout, string> = {
     'home': 'text-lg font-bold tracking-tight',
     'auth-login': 'text-xl font-bold tracking-tight',
     'auth-register': 'text-2xl font-bold',
-    'workspace': 'text-sm font-bold',
   }
   return `${base} ${sizeMap[layout.value]}`
 })
@@ -182,13 +176,6 @@ const textClass = computed(() => {
   .shared-logo--auth-register {
     top: 0.75rem;
   }
-}
-
-/* 工作台：侧栏左上 */
-.shared-logo--workspace {
-  position: absolute; /* 相对于 AppLayout 侧栏 */
-  top: 0.875rem; /* h-14 居中 */
-  left: 1rem;
 }
 
 /* reduced motion */
