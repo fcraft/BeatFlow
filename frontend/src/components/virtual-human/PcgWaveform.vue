@@ -104,7 +104,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="relative w-full h-full min-h-[140px] rounded-lg overflow-hidden border border-gray-700">
+  <div class="relative w-full h-full min-h-[160px] rounded-lg overflow-hidden border border-gray-700">
     <canvas ref="canvasRef" class="w-full h-full block" />
 
     <div class="absolute top-2 right-2 flex items-center gap-2 bg-gray-900/80 backdrop-blur-sm rounded-md px-2 py-1">

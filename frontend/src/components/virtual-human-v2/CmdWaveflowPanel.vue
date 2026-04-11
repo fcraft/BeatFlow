@@ -178,8 +178,8 @@ const beatKindColors: Record<string, string> = {
   flex-shrink: 0;
 }
 .cmd-pcg-track {
-  height: var(--cmd-pcg-max-height, 140px);
-  max-height: var(--cmd-pcg-max-height, 140px);
+  height: var(--cmd-pcg-max-height, 180px);
+  max-height: var(--cmd-pcg-max-height, 180px);
   flex-shrink: 0;
 }
 </style>

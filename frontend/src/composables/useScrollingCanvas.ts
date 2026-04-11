@@ -33,6 +33,16 @@ function getNowMs() {
     : Date.now()
 }
 
+/**
+ * Global shared sweep origin — all instances use the same wall-clock anchor
+ * so their sweep heads are perfectly synchronized.
+ */
+let globalSweepOriginMs = 0
+
+export function resetGlobalSweep() {
+  globalSweepOriginMs = 0
+}
+
 const GAUSSIAN_KERNELS: Record<SmoothingLevel, Float32Array | null> = {
   off: null,
   low: new Float32Array([0.15, 0.70, 0.15]),
@@ -89,8 +99,7 @@ export function useScrollingCanvas(options: ScrollingCanvasOptions) {
   const screenWritten = new Uint8Array(SCREEN_BUF_SIZE)
   let screenWidth = 0
   let sweepPx = 0
-  let prevSweepPx = -1    // previous frame's sweep position
-  let sweepOriginPlayhead = 0  // playhead value when sweep started
+  let prevSweepPx = -1
   let sweepInited = false
 
   // ── Animation state ──
@@ -185,26 +194,32 @@ export function useScrollingCanvas(options: ScrollingCanvasOptions) {
     return Math.max(earliestStoredSample(), Math.min(latestEndSample - 1, playbackOriginSample + elapsed))
   }
 
-  // ── Update screen buffer: advance sweep head from lastPlayhead to currentPlayhead ──
+  // ── Update screen buffer using global wall-clock sweep position ──
   function updateScreenBuffer(currentPlayhead: number, w: number) {
     if (w <= 0) return
+
+    const nowMs = getNowMs()
+
+    // Initialize global sweep origin (shared by all instances)
+    if (globalSweepOriginMs === 0) {
+      globalSweepOriginMs = nowMs
+    }
 
     // Handle canvas resize or first init
     if (w !== screenWidth || !sweepInited) {
       screenWidth = w
       screenValues.fill(0)
       screenWritten.fill(0)
-      sweepOriginPlayhead = currentPlayhead
       prevSweepPx = -1
       sweepPx = 0
       sweepInited = true
-      return
+      // Don't return — fall through to compute initial sweep position
     }
 
-    // Compute sweep position directly from elapsed playhead (no incremental accumulation)
-    const elapsedSamples = currentPlayhead - sweepOriginPlayhead
-    const totalPixelsAdvanced = (elapsedSamples / displaySamples) * w
-    const newSweepPx = Math.floor(totalPixelsAdvanced % w)
+    // Sweep position from global wall-clock (independent of sampleRate)
+    const elapsedSec = (nowMs - globalSweepOriginMs) / 1000
+    const sweepFrac = (elapsedSec % displaySeconds) / displaySeconds  // [0, 1)
+    const newSweepPx = Math.floor(sweepFrac * w)
 
     // How many pixels to fill since last frame?
     let pixelsToFill: number
@@ -213,7 +228,6 @@ export function useScrollingCanvas(options: ScrollingCanvasOptions) {
     } else if (newSweepPx >= prevSweepPx) {
       pixelsToFill = newSweepPx - prevSweepPx
     } else {
-      // Wrapped around
       pixelsToFill = (w - prevSweepPx) + newSweepPx
     }
     pixelsToFill = Math.min(pixelsToFill, w)
@@ -223,8 +237,9 @@ export function useScrollingCanvas(options: ScrollingCanvasOptions) {
 
       for (let i = 0; i < pixelsToFill; i++) {
         const px = (prevSweepPx + 1 + i) % w
-        const sampleOffset = ((prevSweepPx + 1 + i) - newSweepPx) * samplesPerPixel
-        const sampleCenter = Math.round(currentPlayhead + sampleOffset)
+        // Map this pixel back to sample space
+        const pixelsBehindHead = pixelsToFill - 1 - i
+        const sampleCenter = Math.round(currentPlayhead - pixelsBehindHead * samplesPerPixel)
         const radius = Math.max(1, Math.min(4, Math.round(samplesPerPixel * 0.5)))
         let sum = 0, count = 0
         for (let s = sampleCenter - radius; s <= sampleCenter + radius; s++) {
@@ -387,7 +402,7 @@ export function useScrollingCanvas(options: ScrollingCanvasOptions) {
     yMin = 0; yMax = 0; yRangeInitialized = false
     virtualPlayhead = 0; lastFrameTime = 0; virtualPlayheadActive = false
     screenValues.fill(0); screenWritten.fill(0); sweepPx = 0; screenWidth = 0
-    prevSweepPx = -1; sweepOriginPlayhead = 0; sweepInited = false
+    prevSweepPx = -1; sweepInited = false
   }
 
   onUnmounted(stop)
