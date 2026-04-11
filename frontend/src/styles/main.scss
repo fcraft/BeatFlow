@@ -109,3 +109,105 @@ input[type="range"].accent-green-500  { color: #22c55e; }
 input[type="range"].accent-purple-500 { color: #a855f7; }
 input[type="range"].accent-blue-500   { color: #3b82f6; }
 input[type="range"].accent-orange-500 { color: #f97316; }
+
+/* ═══ Page route transition animations ═══ */
+
+/* Shared timing */
+.page-fade-enter-active,
+.page-fade-leave-active,
+.page-slide-left-enter-active,
+.page-slide-left-leave-active,
+.page-slide-right-enter-active,
+.page-slide-right-leave-active {
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+/* Fade (same-level navigation) */
+.page-fade-enter-from {
+  opacity: 0;
+  transform: scale(0.98);
+}
+.page-fade-leave-to {
+  opacity: 0;
+  transform: scale(0.98);
+}
+
+/* Slide left — navigating deeper (content enters from right) */
+.page-slide-left-enter-from {
+  opacity: 0;
+  transform: translateX(40px);
+}
+.page-slide-left-leave-to {
+  opacity: 0;
+  transform: translateX(-20px);
+}
+
+/* Slide right — navigating back (content enters from left) */
+.page-slide-right-enter-from {
+  opacity: 0;
+  transform: translateX(-40px);
+}
+.page-slide-right-leave-to {
+  opacity: 0;
+  transform: translateX(20px);
+}
+
+/* Reduce motion for users who prefer it + mobile perf optimization */
+@media (prefers-reduced-motion: reduce) {
+  .page-fade-enter-active,
+  .page-fade-leave-active,
+  .page-slide-left-enter-active,
+  .page-slide-left-leave-active,
+  .page-slide-right-enter-active,
+  .page-slide-right-leave-active {
+    transition: opacity 0.15s ease;
+  }
+  .page-fade-enter-from,
+  .page-fade-leave-to,
+  .page-slide-left-enter-from,
+  .page-slide-left-leave-to,
+  .page-slide-right-enter-from,
+  .page-slide-right-leave-to {
+    transform: none;
+  }
+}
+
+/* ═══ Auth flow transitions (SharedAuthCard handles the card itself) ═══ */
+
+/* Between home/login/register: just cross-fade the background */
+.auth-crossfade-enter-active,
+.auth-crossfade-leave-active {
+  transition: opacity 0.35s ease;
+}
+.auth-crossfade-enter-from,
+.auth-crossfade-leave-to {
+  opacity: 0;
+}
+
+/* Auth → workspace: fade in content after card expands */
+.auth-to-workspace-enter-active {
+  transition: opacity 0.4s ease 0.3s; /* delay to let card expand first */
+}
+.auth-to-workspace-leave-active {
+  transition: opacity 0.2s ease;
+}
+.auth-to-workspace-enter-from {
+  opacity: 0;
+}
+.auth-to-workspace-leave-to {
+  opacity: 0;
+}
+
+/* Workspace → auth: fade out content, then card shrinks */
+.workspace-to-auth-enter-active {
+  transition: opacity 0.35s ease 0.15s;
+}
+.workspace-to-auth-leave-active {
+  transition: opacity 0.25s ease;
+}
+.workspace-to-auth-enter-from {
+  opacity: 0;
+}
+.workspace-to-auth-leave-to {
+  opacity: 0;
+}

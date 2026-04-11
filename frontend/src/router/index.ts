@@ -2,6 +2,29 @@ import { createRouter, createWebHistory } from 'vue-router'
 
 import { useAuthStore } from '@/store/auth'
 
+/**
+ * 页面过渡层级映射
+ * 数值越大层级越深，用于决定 slide 方向：
+ *   向深层 → slide-left（内容从右侧滑入）
+ *   向浅层 → slide-right（内容从左侧滑入）
+ *   同层   → fade
+ */
+const DEPTH: Record<string, number> = {
+  home: 0,
+  login: 1,
+  register: 1,
+  projects: 2,
+  'project-detail': 3,
+  'file-viewer': 4,
+  'sync-viewer': 4,
+  community: 2,
+  simulate: 2,
+  'virtual-human': 2,
+  'virtual-human-v2': 2,
+  inbox: 2,
+  admin: 2,
+}
+
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
@@ -23,8 +46,16 @@ const router = createRouter({
   ]
 })
 
-router.beforeEach((to, _from, next) => {
+// ── Auth guard (beforeEach) ──
+router.beforeEach((to, from, next) => {
   const auth = useAuthStore()
+
+  // 已登录用户访问首页/登录/注册页时，自动跳转到项目列表
+  if (auth.isAuthenticated && (to.name === 'home' || to.name === 'login' || to.name === 'register')) {
+    next('/projects')
+    return
+  }
+
   if (to.meta.requiresAuth && !auth.isAuthenticated) {
     next('/login')
     return
@@ -36,6 +67,19 @@ router.beforeEach((to, _from, next) => {
       return
     }
   }
+
+  // 根据页面层级深度决定过渡动画方向
+  const fromDepth = DEPTH[from.name as string] ?? 0
+  const toDepth = DEPTH[to.name as string] ?? 0
+
+  if (toDepth > fromDepth) {
+    to.meta.transition = 'page-slide-left'
+  } else if (toDepth < fromDepth) {
+    to.meta.transition = 'page-slide-right'
+  } else {
+    to.meta.transition = 'page-fade'
+  }
+
   next()
 })
 

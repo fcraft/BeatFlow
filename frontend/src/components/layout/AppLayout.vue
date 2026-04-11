@@ -15,20 +15,16 @@
              transition-[width,transform] duration-200 ease-in-out
              lg:relative lg:translate-x-0"
       :class="[
-        // Desktop: collapse by width
         collapsed ? 'lg:w-16' : 'lg:w-60',
-        // Mobile: slide in/out
         mobileOpen ? 'translate-x-0 w-60' : '-translate-x-full w-60',
       ]"
     >
-      <!-- Logo -->
+      <!-- Logo 占位（实际由 SharedLogo 渲染） -->
       <div class="flex items-center gap-3 px-4 h-14 border-b border-gray-100 shrink-0">
-        <div class="w-8 h-8 bg-primary-600 rounded-lg flex items-center justify-center shrink-0">
-          <HeartPulse class="w-4 h-4 text-white" />
-        </div>
+        <div class="w-8 h-8" />
         <span
-          class="font-bold text-gray-900 text-sm truncate transition-opacity duration-150"
-          :class="collapsed ? 'lg:hidden' : ''"
+          v-if="!collapsed"
+          class="font-bold text-transparent text-sm"
         >BeatFlow</span>
       </div>
 
@@ -46,7 +42,6 @@
         >
           <div class="relative shrink-0">
             <component :is="item.icon" class="w-4 h-4" />
-            <!-- 未读角标 -->
             <span
               v-if="item.badge && item.badge > 0"
               class="absolute -top-1.5 -right-1.5 min-w-[14px] h-3.5 px-0.5 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center leading-none"
@@ -81,16 +76,13 @@
     <div class="flex-1 flex flex-col min-w-0 overflow-hidden">
       <!-- Top bar -->
       <header class="flex items-center gap-3 px-4 sm:px-6 h-14 bg-white border-b border-gray-200 shrink-0">
-        <!-- Hamburger (mobile) -->
         <button class="btn-icon rounded-lg lg:hidden" @click="mobileOpen = !mobileOpen">
           <Menu class="w-4 h-4" />
         </button>
-        <!-- Collapse toggle (desktop) -->
         <button class="btn-icon rounded-lg hidden lg:flex" @click="collapsed = !collapsed">
           <PanelLeft class="w-4 h-4" />
         </button>
         <div class="flex-1" />
-        <!-- 通知铃铛 -->
         <RouterLink to="/inbox" class="btn-icon rounded-lg relative" title="收件箱">
           <Bell class="w-4 h-4" />
           <span
@@ -110,7 +102,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, inject, watch, onMounted } from 'vue'
+import type { Ref } from 'vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { HeartPulse, LogOut, PanelLeft, Menu, Bell } from 'lucide-vue-next'
 import { useAuthStore } from '@/store/auth'
@@ -127,6 +120,12 @@ const { navItems } = useNavItems()
 
 const collapsed = ref(false)
 const mobileOpen = ref(false)
+
+// 同步折叠状态给 App.vue 的 SharedLogo
+const parentCollapsed = inject<Ref<boolean>>('sidebar-collapsed')
+watch(collapsed, (v) => {
+  if (parentCollapsed) parentCollapsed.value = v
+}, { immediate: true })
 
 const isActive = (to: string) => route.path.startsWith(to)
 
