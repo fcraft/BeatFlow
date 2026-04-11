@@ -161,7 +161,9 @@ class SimulationPipeline:
         self._stream_task = asyncio.create_task(self._stream_loop())
 
     def _pre_generate_beats(self) -> None:
-        for _ in range(5):
+        # Only 2 beats: enough for first ~1.6s of streaming while
+        # _beat_loop ramps up, without adding excessive startup latency.
+        for _ in range(2):
             self._run_one_beat()
 
     async def stop(self) -> None:
@@ -859,20 +861,24 @@ class SimulationPipeline:
 
                 buffered_ecg_chunks = len(self._ecg_buf) / ECG_CHUNK_SIZE
 
-                if buffered_ecg_chunks < 3:
-                    batch = 3 if eff_hr > 120 else 2
-                    await loop.run_in_executor(None, self._run_batch_beats, batch)
+                # Tight buffer management: target 2~8 chunks (200~800ms)
+                # to minimize latency between state changes and visible
+                # waveform updates, while still preventing underruns.
+                if buffered_ecg_chunks < 2:
+                    # Critical low — generate 1 beat, minimal sleep
+                    await loop.run_in_executor(None, self._run_one_beat)
                     sleep_time = 0.001
-                elif buffered_ecg_chunks < 8:
-                    batch = 2 if eff_hr > 120 else 1
-                    await loop.run_in_executor(None, self._run_batch_beats, batch)
-                    sleep_time = rr_sec * 0.3 if eff_hr > 120 else rr_sec * 0.5
-                elif buffered_ecg_chunks > 20:
+                elif buffered_ecg_chunks < 5:
+                    # Normal — generate 1 beat at real-time pace
                     await loop.run_in_executor(None, self._run_one_beat)
-                    sleep_time = rr_sec * 0.90
+                    sleep_time = rr_sec * 0.4
+                elif buffered_ecg_chunks > 8:
+                    # Buffer too deep — skip generation, let drain catch up
+                    sleep_time = rr_sec * 0.5
                 else:
+                    # 5~8 chunks — cruise, generate slowly
                     await loop.run_in_executor(None, self._run_one_beat)
-                    sleep_time = rr_sec * 0.70
+                    sleep_time = rr_sec * 0.8
 
                 await asyncio.sleep(max(0.001, sleep_time))
         except asyncio.CancelledError:
