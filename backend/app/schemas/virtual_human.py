@@ -42,6 +42,11 @@ class ProfileListItem(BaseModel):
     # 从 snapshot 提取的摘要信息
     heart_rate: Optional[float] = None
     rhythm: Optional[str] = None
+    systolic_bp: Optional[float] = None
+    diastolic_bp: Optional[float] = None
+    spo2: Optional[float] = None
+    temperature: Optional[float] = None
+    has_snapshot: bool = False
     created_at: datetime
     updated_at: datetime
 

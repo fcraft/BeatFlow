@@ -470,6 +470,15 @@ class SimulationPipeline:
             snap["qt_state"] = self._qt.get_state()
         if self._coronary is not None:
             snap["coronary_state"] = self._coronary.get_state()
+        # Attach current vitals summary for profile list display
+        with self._state_lock:
+            v = self._vitals
+            snap["heart_rate"] = v.get("heart_rate")
+            snap["rhythm"] = v.get("rhythm")
+            snap["systolic_bp"] = v.get("systolic_bp")
+            snap["diastolic_bp"] = v.get("diastolic_bp")
+            snap["spo2"] = v.get("spo2")
+            snap["temperature"] = v.get("temperature")
         return snap
 
     def get_init_payload(self) -> Dict[str, Any]:

@@ -60,6 +60,11 @@ async def list_profiles(
             is_active=p.is_active,
             heart_rate=snap.get("heart_rate"),
             rhythm=snap.get("rhythm"),
+            systolic_bp=snap.get("systolic_bp"),
+            diastolic_bp=snap.get("diastolic_bp"),
+            spo2=snap.get("spo2"),
+            temperature=snap.get("temperature"),
+            has_snapshot=bool(p.state_snapshot),
             created_at=p.created_at,
             updated_at=p.updated_at,
         ))

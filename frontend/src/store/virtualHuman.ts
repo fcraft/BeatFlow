@@ -38,6 +38,11 @@ export interface ProfileItem {
   is_active: boolean
   heart_rate: number | null
   rhythm: string | null
+  systolic_bp: number | null
+  diastolic_bp: number | null
+  spo2: number | null
+  temperature: number | null
+  has_snapshot: boolean
   created_at: string
   updated_at: string
 }
@@ -551,6 +556,8 @@ export const useVirtualHumanStore = defineStore('virtualHuman', () => {
       case 'save_result':
         if (msg.success) {
           toast.success('状态已保存')
+          // 刷新档案列表以更新 snapshot 摘要数据
+          fetchProfiles()
         } else {
           toast.error('保存失败')
         }

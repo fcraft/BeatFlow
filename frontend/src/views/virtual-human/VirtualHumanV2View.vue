@@ -93,9 +93,13 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="h-screen w-screen flex flex-col overflow-hidden select-none"
+  <div class="h-screen w-screen flex flex-col overflow-hidden select-none relative"
        style="background: var(--cmd-bg-gradient); color: var(--cmd-text-primary);
               font-family: var(--cmd-font-body)">
+
+    <!-- Background ambient glow -->
+    <div class="vhv2-glow vhv2-glow--1" />
+    <div class="vhv2-glow vhv2-glow--2" />
 
     <!-- Status Bar -->
     <CmdStatusBar @open-nav="toggleNavMenu" />
@@ -175,5 +179,62 @@ onUnmounted(() => {
 }
 .nav-menu-enter-from, .nav-menu-leave-to {
   opacity: 0; transform: translateY(-4px) scale(0.95);
+}
+
+/* ─── Background ambient glow ─── */
+.vhv2-glow {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 1;
+  mix-blend-mode: screen;
+}
+.vhv2-glow--1 {
+  width: 700px;
+  height: 700px;
+  background: radial-gradient(circle, rgba(0, 122, 255, 0.18) 0%, rgba(0, 122, 255, 0.04) 40%, transparent 70%);
+  top: -20%;
+  left: -10%;
+  animation: vhv2-wander-1 45s ease-in-out infinite;
+}
+.vhv2-glow--2 {
+  width: 600px;
+  height: 600px;
+  background: radial-gradient(circle, rgba(175, 82, 222, 0.12) 0%, rgba(175, 82, 222, 0.03) 40%, transparent 70%);
+  bottom: -15%;
+  right: -10%;
+  animation: vhv2-wander-2 55s ease-in-out infinite;
+}
+
+/* Orb 1: wanders across the full viewport */
+@keyframes vhv2-wander-1 {
+  0%   { transform: translate(0, 0) scale(1); }
+  10%  { transform: translate(30vw, 15vh) scale(1.05); }
+  20%  { transform: translate(55vw, -5vh) scale(0.9); }
+  30%  { transform: translate(70vw, 30vh) scale(1.1); }
+  40%  { transform: translate(45vw, 55vh) scale(0.95); }
+  50%  { transform: translate(15vw, 65vh) scale(1.08); }
+  60%  { transform: translate(-5vw, 40vh) scale(0.92); }
+  70%  { transform: translate(10vw, 10vh) scale(1.12); }
+  80%  { transform: translate(50vw, 20vh) scale(0.97); }
+  90%  { transform: translate(25vw, -10vh) scale(1.03); }
+  100% { transform: translate(0, 0) scale(1); }
+}
+
+/* Orb 2: opposite wandering path */
+@keyframes vhv2-wander-2 {
+  0%   { transform: translate(0, 0) scale(1); }
+  12%  { transform: translate(-25vw, -20vh) scale(1.06); }
+  25%  { transform: translate(-50vw, 10vh) scale(0.93); }
+  37%  { transform: translate(-35vw, -40vh) scale(1.1); }
+  50%  { transform: translate(-10vw, -55vh) scale(0.88); }
+  62%  { transform: translate(10vw, -30vh) scale(1.05); }
+  75%  { transform: translate(-20vw, -10vh) scale(0.95); }
+  87%  { transform: translate(-40vw, -45vh) scale(1.08); }
+  100% { transform: translate(0, 0) scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vhv2-glow { animation: none !important; }
 }
 </style>

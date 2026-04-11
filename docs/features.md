@@ -840,6 +840,7 @@ v2 `SimulationPipeline.apply_command()` 仅实现 12/48 个交互命令（25%）
 | `VitalsBar.vue` | 底部常驻生命体征薄条（HR/BP/SpO2/Temp/RR/CO 单行 + 可展开详情面板：血流动力学/电生理/生理/电解质/药物/心脏结构）；报警集成（超阈值参数闪烁 critical-pulse/warning-pulse 动画） |
 | `ControlDrawer.vue` | 底部弹出毛玻璃抽屉（Teleport + 遮罩 + slide-up 动画，包裹 ControlPanel） |
 | `ProfileSelector.vue` | 档案选择器（列出/新建/删除虚拟人，演示模式，深色主题） |
+| `CmdProfileSelector.vue` | V2 指挥中心档案选择器（卡片式布局，展示 HR/节律/SpO2 摘要体征，内联创建表单，响应式双列 grid，支持删除确认） |
 | `EcgWaveform.vue` | Canvas 实时 ECG 滚动波形，内置 `cachedAnnotation` 缓存上次有效逐拍标注，防止 `store.beatAnnotations` 更新间隙 UI 闪烁；支持信号平滑级别选择（off/low/high）；卡尺模式叠加 overlay canvas（冻结+标记+间期测量） |
 | `EcgLeadSelector.vue` | 12 导联选择器（逐导联 toggle + 全部 12 导快捷按钮，肢体导联绿色/胸导联蓝色高亮） |
 | `EcgLeadStrip.vue` | 单导联 ECG 波形条（独立 useScrollingCanvas 实例，用于多导联 grid 布局） |
