@@ -369,11 +369,46 @@ FileAssociation {
 ### 接口
 | 方法 | 路径 | 描述 |
 |------|------|------|
-| GET | `/api/v1/simulate/templates` | 获取预设模板列表 |
+| GET | `/api/v1/simulate/templates` | 获取预设模板列表（23 个） |
 | POST | `/api/v1/simulate/generate` | 生成合成信号 |
 
+### 模板系统
+- **模板总数**：23 个（正常:6, 心律失常:11, 瓣膜病:6）
+- **前端筛选**：分类 Tab（全部/正常/心律失常/瓣膜病）+ 文本搜索 + 折叠/展开
+- **默认显示**：折叠时仅显示前 6 个模板，点击"展开全部"查看所有
+- **已选提示**：折叠后 header 显示当前选中模板名称 badge
+
+### 模板列表
+| ID | 名称 | 分类 |
+|----|------|------|
+| `normal_adult` | 正常成人窦性心律 | normal |
+| `elderly_resting` | 老年人静息心率 | normal |
+| `anxiety_fever` | 焦虑/发热心率 | normal |
+| `exercise_treadmill_moderate` | 平板运动试验（Bruce Stage 2） | normal |
+| `exercise_treadmill_peak` | 平板运动试验（Bruce Stage 4） | normal |
+| `exercise_cycle_peak` | 功率自行车运动试验（峰值负荷） | normal |
+| `sinus_tachycardia` | 窦性心动过速 | arrhythmia |
+| `sinus_bradycardia` | 窦性心动过缓 | arrhythmia |
+| `sinus_arrhythmia` | 窦性心律不齐 | arrhythmia |
+| `af` | 心房颤动 (AF) | arrhythmia |
+| `pvc` | 室性早搏 (PVC) | arrhythmia |
+| `frequent_pvc` | 频发室性早搏 (>30%) | arrhythmia |
+| `svt` | 室上性心动过速 (SVT) | arrhythmia |
+| `vt` | 室性心动过速 (VT) | arrhythmia |
+| `ron_t_vt` | R-on-T → 室速 (VT) | arrhythmia |
+| `ron_t_vf` | R-on-T → 室颤 (VF) | arrhythmia |
+| `ron_t_random` | R-on-T（随机结局） | arrhythmia |
+| `systolic_murmur` | 收缩期杂音（二尖瓣关闭不全） | valvular |
+| `diastolic_murmur` | 舒张期杂音（主动脉瓣关闭不全） | valvular |
+| `s3_gallop` | S3 奔马律（心力衰竭） | valvular |
+| `s4_gallop` | S4 奔马律（高血压性心脏病） | valvular |
+| `split_s2` | S2 分裂 | valvular |
+| `combined_valvular` | 复合瓣膜病（收缩期杂音 + S3） | valvular |
+
 ### 支持的心律类型
-`normal`（正常窦律）、`tachycardia`（窦性心动过速）、`bradycardia`（窦性心动过缓）、`sinus_arrhythmia`（窦性心律不齐）、`af`（心房颤动）、`pvc`（室性早搏）、`svt`（室上性心动过速）、`vt`（室性心动过速）、`ron_t`（R-on-T → VT/VF）
+`normal`（正常窦律 60-100bpm）、`tachycardia`（窦性心动过速 100-300bpm）、`bradycardia`（窦性心动过缓 30-60bpm）、`sinus_arrhythmia`（窦性心律不齐）、`af`（心房颤动）、`pvc`（室性早搏）、`svt`（室上性心动过速）、`vt`（室性心动过速）、`ron_t`（R-on-T → VT/VF）
+
+> 窦性心律三分类遵循临床标准定义，心率范围互不重叠。切换心律类型时自动 clamp 心率到目标范围。
 
 ### R-on-T 现象模拟
 | 特性 | 说明 |
@@ -889,6 +924,7 @@ v2 `SimulationPipeline.apply_command()` 仅实现 12/48 个交互命令（25%）
 | `DetectionPanel` | `components/ui/DetectionPanel.vue` | 自动检测结果展示 |
 | `ProjectPicker` | `components/ui/ProjectPicker.vue` | 项目选择器（基于 AppSelect，搜索+内联创建新项目，支持暗色模式） |
 | `AppSelect` | `components/ui/AppSelect.vue` | 通用下拉选择器（毛玻璃风格，Teleport 挂载到 body，支持搜索、图标、badge、暗色模式、footer slot） |
+| `AppCheckbox` | `components/ui/AppCheckbox.vue` | 自定义复选框（圆角方框 + SVG 勾选动画 + v-model 双向绑定，支持 label/disabled） |
 
 ### 项目相关组件
 | 组件 | 说明 |

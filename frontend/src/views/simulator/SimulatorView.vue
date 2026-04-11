@@ -16,30 +16,77 @@
 
           <!-- Templates -->
           <div class="card p-5">
-            <h3 class="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
-              <BookOpen class="w-4 h-4 text-blue-500" />一键套用模板
-            </h3>
-            <div v-if="loadingTemplates" class="flex justify-center py-6"><span class="spinner w-5 h-5" /></div>
-            <div v-else class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              <button
-                v-for="tpl in templates"
-                :key="tpl.id"
-                class="text-left px-4 py-3 rounded-xl border transition-all duration-150"
-                :class="lastTemplate === tpl.id
-                  ? 'border-blue-500 bg-blue-50'
-                  : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'"
-                @click="applyTemplate(tpl)"
-              >
-                <div class="flex items-start justify-between gap-2">
-                  <span class="text-sm font-medium text-gray-800 leading-tight">{{ tpl.name }}</span>
-                  <span class="shrink-0 text-xs px-1.5 py-0.5 rounded-full font-medium"
-                    :class="CATEGORY_BADGE[tpl.category] ?? 'bg-gray-100 text-gray-600'">
-                    {{ CATEGORY_LABEL[tpl.category] ?? tpl.category }}
-                  </span>
-                </div>
-                <p class="text-xs text-gray-400 mt-1 line-clamp-2">{{ tpl.description }}</p>
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                <BookOpen class="w-4 h-4 text-blue-500" />一键套用模板
+                <span v-if="lastTemplate" class="text-xs font-normal text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
+                  已选：{{ templates.find(t => t.id === lastTemplate)?.name ?? '' }}
+                </span>
+              </h3>
+              <button class="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1 transition-colors"
+                @click="showTemplates = !showTemplates">
+                {{ showTemplates ? '收起' : '展开' }}
+                <ChevronDown class="w-3.5 h-3.5 transition-transform" :class="showTemplates && 'rotate-180'" />
               </button>
             </div>
+
+            <template v-if="showTemplates">
+              <div v-if="loadingTemplates" class="flex justify-center py-6"><span class="spinner w-5 h-5" /></div>
+              <template v-else>
+                <!-- 搜索 + 分类筛选 -->
+                <div class="flex flex-col sm:flex-row sm:items-center gap-2 mb-3">
+                  <div class="relative flex-1">
+                    <Search class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                    <input v-model="templateSearch" type="text" placeholder="搜索模板..."
+                      class="input pl-8 py-1.5 text-sm w-full" />
+                  </div>
+                  <div class="flex gap-1">
+                    <button v-for="cat in TEMPLATE_CATEGORIES" :key="cat.value"
+                      class="px-2.5 py-1 rounded-lg text-xs font-medium border transition-all"
+                      :class="templateCategory === cat.value
+                        ? 'bg-blue-500 text-white border-blue-500'
+                        : 'bg-white text-gray-500 border-gray-200 hover:border-blue-300'"
+                      @click="templateCategory = cat.value"
+                    >{{ cat.label }}
+                      <span class="ml-0.5 opacity-70">{{ cat.value === 'all' ? templates.length : templates.filter(t => t.category === cat.value).length }}</span>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- 模板网格 -->
+                <div v-if="filteredTemplates.length > 0" class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <button
+                    v-for="tpl in visibleTemplates"
+                    :key="tpl.id"
+                    class="text-left px-4 py-3 rounded-xl border transition-all duration-150"
+                    :class="lastTemplate === tpl.id
+                      ? 'border-blue-500 bg-blue-50'
+                      : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'"
+                    @click="applyTemplate(tpl)"
+                  >
+                    <div class="flex items-start justify-between gap-2">
+                      <span class="text-sm font-medium text-gray-800 leading-tight">{{ tpl.name }}</span>
+                      <span class="shrink-0 text-xs px-1.5 py-0.5 rounded-full font-medium"
+                        :class="CATEGORY_BADGE[tpl.category] ?? 'bg-gray-100 text-gray-600'">
+                        {{ CATEGORY_LABEL[tpl.category] ?? tpl.category }}
+                      </span>
+                    </div>
+                    <p class="text-xs text-gray-400 mt-1 line-clamp-2">{{ tpl.description }}</p>
+                  </button>
+                </div>
+                <p v-else class="text-sm text-gray-400 text-center py-4">无匹配模板</p>
+
+                <!-- 展开更多 -->
+                <button v-if="filteredTemplates.length > TEMPLATE_PAGE_SIZE && !templateShowAll"
+                  class="mt-2 w-full text-xs text-blue-500 hover:text-blue-700 py-1.5 transition-colors"
+                  @click="templateShowAll = true"
+                >展开全部 {{ filteredTemplates.length }} 个模板 ↓</button>
+                <button v-if="templateShowAll && filteredTemplates.length > TEMPLATE_PAGE_SIZE"
+                  class="mt-2 w-full text-xs text-gray-400 hover:text-gray-600 py-1.5 transition-colors"
+                  @click="templateShowAll = false"
+                >收起 ↑</button>
+              </template>
+            </template>
           </div>
 
           <!-- ECG Parameters -->
@@ -270,11 +317,8 @@
                 <input v-model.number="form.random_seed" type="number" min="0"
                   placeholder="留空则每次随机" class="input" />
               </div>
-              <div class="flex items-center gap-2 pt-5">
-                <input type="checkbox" v-model="form.auto_detect" id="auto-detect" class="accent-blue-500" />
-                <label for="auto-detect" class="text-sm text-gray-700 cursor-pointer">
-                  生成后自动创建标记（QRS/S1/S2 等）
-                </label>
+              <div class="flex items-center pt-5">
+                <AppCheckbox v-model="form.auto_detect" label="生成后自动创建标记（QRS/S1/S2 等）" />
               </div>
             </div>
           </div>
@@ -397,14 +441,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import { RouterLink } from 'vue-router'
 import {
   Activity, Waves, BookOpen, FolderOpen, Zap, CheckCircle2,
-  SlidersHorizontal, ChevronDown, History, Layers,
+  SlidersHorizontal, ChevronDown, History, Layers, Search,
 } from 'lucide-vue-next'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import ProjectPicker from '@/components/ui/ProjectPicker.vue'
+import AppCheckbox from '@/components/ui/AppCheckbox.vue'
 import { useAuthStore } from '@/store/auth'
 import { useToastStore } from '@/store/toast'
 
@@ -420,6 +465,38 @@ const result = ref<any>(null)
 const lastTemplate = ref('')
 const showAdvanced = ref(false)
 const history = ref<any[]>([])
+
+// ── Template filter/search ─────────────────────────────────────────────────
+const showTemplates = ref(true)
+const templateSearch = ref('')
+const templateCategory = ref('all')
+const templateShowAll = ref(false)
+const TEMPLATE_PAGE_SIZE = 6
+
+const TEMPLATE_CATEGORIES = [
+  { value: 'all', label: '全部' },
+  { value: 'normal', label: '正常' },
+  { value: 'arrhythmia', label: '心律失常' },
+  { value: 'valvular', label: '瓣膜病' },
+]
+
+const filteredTemplates = computed(() => {
+  let list = templates.value
+  if (templateCategory.value !== 'all') {
+    list = list.filter(t => t.category === templateCategory.value)
+  }
+  const q = templateSearch.value.trim().toLowerCase()
+  if (q) {
+    list = list.filter(t =>
+      t.name.toLowerCase().includes(q) || t.description.toLowerCase().includes(q)
+    )
+  }
+  return list
+})
+
+const visibleTemplates = computed(() =>
+  templateShowAll.value ? filteredTemplates.value : filteredTemplates.value.slice(0, TEMPLATE_PAGE_SIZE)
+)
 
 // ── Form ───────────────────────────────────────────────────────────────────
 const form = ref({
@@ -447,7 +524,7 @@ const form = ref({
 
 // ── Rhythm definitions ─────────────────────────────────────────────────────
 const RHYTHMS = [
-  { value: 'normal',            label: '正常窦律',   desc: '30~300 bpm' },
+  { value: 'normal',            label: '正常窦律',   desc: '60~100 bpm' },
   { value: 'tachycardia',       label: '窦性心动过速', desc: '≥100 bpm' },
   { value: 'bradycardia',       label: '窦性心动过缓', desc: '≤60 bpm' },
   { value: 'sinus_arrhythmia',  label: '窦性心律不齐', desc: '节律不规则' },
@@ -460,7 +537,7 @@ const RHYTHMS = [
 
 // HR range per rhythm
 const HR_RANGE: Record<string, { min: number; max: number }> = {
-  normal:           { min: 30, max: 300 },
+  normal:           { min: 60, max: 100 },
   tachycardia:      { min: 100, max: 300 },
   bradycardia:      { min: 30, max: 60 },
   sinus_arrhythmia: { min: 40, max: 120 },
@@ -484,9 +561,14 @@ const RHYTHM_DEFAULTS: Record<string, Partial<typeof form.value>> = {
   ron_t:            { heart_rate: 72,  heart_rate_std: 2,  noise_level: 0.01 },
 }
 
-const applyRhythmDefaults = (rhythm: string) => {
+const applyRhythmDefaults = async (rhythm: string) => {
+  const range = HR_RANGE[rhythm] ?? { min: 30, max: 300 }
+  // 先等 hrRange computed 的新 min/max 渲染到 DOM
+  await nextTick()
   const d = RHYTHM_DEFAULTS[rhythm]
   if (d) Object.assign(form.value, d)
+  // clamp 心率到新范围内
+  form.value.heart_rate = Math.max(range.min, Math.min(range.max, form.value.heart_rate))
 }
 
 // ── PCG Abnormalities ─────────────────────────────────────────────────────

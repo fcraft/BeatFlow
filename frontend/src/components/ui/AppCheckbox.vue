@@ -4,7 +4,7 @@
       type="checkbox"
       :checked="modelValue"
       :disabled="disabled"
-      class="sr-only"
+      class="app-check__input"
       @change="emit('update:modelValue', ($event.target as HTMLInputElement).checked)"
     />
     <!-- Box -->
@@ -39,11 +39,25 @@ const emit = defineEmits<{
   gap: 10px;
   cursor: pointer;
   user-select: none;
+  position: relative;
 }
 .app-check--disabled {
   opacity: 0.5;
   cursor: not-allowed;
   pointer-events: none;
+}
+
+.app-check__input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  /* 绝对定位在 relative 容器内，focus 时不会触发外层 scroll */
 }
 
 .app-check__box {
@@ -56,7 +70,7 @@ const emit = defineEmits<{
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
   margin-top: 1px;
 }
 .app-check__box:hover {
