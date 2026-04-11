@@ -52,9 +52,9 @@ function drawAnnotationOverlay(ctx: CanvasRenderingContext2D, w: number, h: numb
 
 const smoothingLevel = computed(() => store.ecgSmoothingLevel)
 
-/** 根据屏幕宽度计算显示秒数：手机 2.5s，平板 3.5s，桌面 5s */
+/** 根据屏幕宽度计算显示秒数：手机 1.5s，平板 3s，桌面 5s */
 const screenW = typeof window !== 'undefined' ? window.innerWidth : 1024
-const dispSec = screenW < 768 ? 2.5 : screenW < 1024 ? 3.5 : 5
+const dispSec = screenW < 768 ? 1.5 : screenW < 1024 ? 3 : 5
 
 const { appendSamples, start, stop, reset } = useScrollingCanvas({
   canvasRef,

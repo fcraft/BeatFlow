@@ -62,6 +62,8 @@ class EcgSynthesizerV2:
 
     def __init__(self, sample_rate: int = 500) -> None:
         self.sample_rate = sample_rate
+        # Fractional sample accumulator to eliminate per-beat int() truncation drift
+        self._frac_acc: float = 0.0
         # T-wave carryover buffer per VCG component for P-on-T fusion
         self._t_wave_carryover_x: NDArray[np.float64] | None = None
         self._t_wave_carryover_y: NDArray[np.float64] | None = None
@@ -109,8 +111,11 @@ class EcgSynthesizerV2:
         # 2. Project VCG to requested leads
         raw_leads = self._project_vcg_to_leads(vcg, leads)
 
-        # 3. Downsample to target sample_rate
-        target_len = int(conduction.rr_sec * self.sample_rate)
+        # 3. Downsample to target sample_rate (with fractional accumulator
+        #    to prevent cumulative drift vs PCG over long runs)
+        exact = conduction.rr_sec * self.sample_rate + self._frac_acc
+        target_len = round(exact)
+        self._frac_acc = exact - target_len
         samples: dict[str, NDArray[np.float64]] = {}
         for name, signal in raw_leads.items():
             ds = self._downsample(signal, target_len)

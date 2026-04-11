@@ -113,7 +113,7 @@ onUnmounted(() => {
     <!-- Main Content -->
     <div class="flex-1 flex min-h-0">
       <!-- LEFT: Waveform flow -->
-      <div class="flex-1 min-w-0">
+      <div class="flex-1 min-w-0 flex flex-col h-full">
         <CmdProfileSelector v-if="!store.connected && !store.connecting" />
         <div v-else-if="store.connecting" class="flex-1 flex items-center justify-center h-full">
           <div class="text-white/30 text-sm">连接中...</div>
@@ -123,7 +123,8 @@ onUnmounted(() => {
           :show-pv="showPvLoop" :show-ap="showApChart" :show-wiggers="showCcChart"
           @toggle-pv="showPvLoop = !showPvLoop"
           @toggle-ap="showApChart = !showApChart"
-          @toggle-wiggers="showCcChart = !showCcChart" />
+          @toggle-wiggers="showCcChart = !showCcChart"
+          @open-controls="showControlOverlay = true" />
       </div>
 
       <!-- RIGHT: Vitals sidebar — desktop only -->

@@ -94,6 +94,8 @@ class ParametricPcgSynthesizer:
         self._agc_gain: float = 1.0
         self._prev_tail: NDArray[np.float64] | None = None
         self._rng = np.random.default_rng()
+        # Fractional sample accumulator to eliminate per-beat int() truncation drift
+        self._frac_acc: float = 0.0
 
     def synthesize(
         self,
@@ -103,7 +105,10 @@ class ParametricPcgSynthesizer:
         """Synthesize one beat of PCG from conduction timing."""
         sr = self.SAMPLE_RATE
         rr_sec = conduction.rr_sec
-        n_samples = int(rr_sec * sr)
+        # Use fractional accumulator to prevent cumulative drift vs ECG
+        exact = rr_sec * sr + self._frac_acc
+        n_samples = round(exact)
+        self._frac_acc = exact - n_samples
         hr = 60.0 / rr_sec
 
         beat_kind = conduction.beat_kind

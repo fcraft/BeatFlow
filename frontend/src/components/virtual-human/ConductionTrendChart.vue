@@ -82,8 +82,11 @@ function draw() {
 function resizeCanvas() {
   const el = canvas.value
   if (!el) return
+  const parent = el.parentElement
   el.width = el.offsetWidth
-  el.height = 120
+  // Use parent available height if possible, otherwise fallback to 120
+  const availableH = parent ? parent.clientHeight - el.offsetTop : 0
+  el.height = availableH > 40 ? availableH : 120
   draw()
 }
 
@@ -106,17 +109,19 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="bg-white/[0.06] rounded-lg border border-white/[0.08] p-3">
-    <div class="flex items-center justify-between mb-2">
+  <div class="bg-white/[0.06] rounded-lg border border-white/[0.08] p-3 flex flex-col h-full min-h-0">
+    <div class="flex items-center justify-between mb-2 shrink-0">
       <h4 class="text-xs font-medium text-white/60">电生理趋势</h4>
       <span class="text-[10px] text-white/30">最近 60 拍</span>
     </div>
-    <canvas ref="canvas" class="w-full" style="height: 120px" />
-    <div
-      v-if="store.conductionTrend.length === 0"
-      class="text-center text-xs text-white/30 py-4"
-    >
-      连接后显示趋势数据
+    <div class="flex-1 min-h-0 relative">
+      <canvas ref="canvas" class="w-full h-full" />
+      <div
+        v-if="store.conductionTrend.length === 0"
+        class="absolute inset-0 flex items-center justify-center text-xs text-white/30"
+      >
+        连接后显示趋势数据
+      </div>
     </div>
   </div>
 </template>

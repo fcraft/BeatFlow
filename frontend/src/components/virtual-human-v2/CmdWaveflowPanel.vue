@@ -5,18 +5,39 @@
  * 桌面端: ECG/PCG 限高，多余空间展示实时仪表盘面板（标注+趋势+效果）
  * 移动端: ECG/PCG 弹性占满，无仪表盘
  */
-import { computed } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useVirtualHumanStore } from '@/store/virtualHuman'
 import CmdEcgWaveform from './CmdEcgWaveform.vue'
 import CmdPcgWaveform from './CmdPcgWaveform.vue'
-import CmdSyncIndicator from './CmdSyncIndicator.vue'
 import CmdWaveformToolbar from './CmdWaveformToolbar.vue'
 import CmdAlarmBanner from './CmdAlarmBanner.vue'
+import CmdQuickActions from './CmdQuickActions.vue'
 import ActiveEffectsBar from '@/components/virtual-human/ActiveEffectsBar.vue'
 import EcgMultiLeadDisplay from '@/components/virtual-human/EcgMultiLeadDisplay.vue'
-import ConductionTrendChart from '@/components/virtual-human/ConductionTrendChart.vue'
 
 const store = useVirtualHumanStore()
+
+/** 屏幕宽度断点 key — 跨越 768/1024 时波形组件重建以更新 displaySeconds */
+function getBreakpoint(): string {
+  const w = typeof window !== 'undefined' ? window.innerWidth : 1024
+  if (w < 768) return 'sm'
+  if (w < 1024) return 'md'
+  return 'lg'
+}
+const waveformKey = ref(getBreakpoint())
+let resizeTimer: ReturnType<typeof setTimeout> | null = null
+function onResize() {
+  if (resizeTimer) clearTimeout(resizeTimer)
+  resizeTimer = setTimeout(() => {
+    const bp = getBreakpoint()
+    if (bp !== waveformKey.value) waveformKey.value = bp
+  }, 200)
+}
+onMounted(() => window.addEventListener('resize', onResize))
+onUnmounted(() => {
+  window.removeEventListener('resize', onResize)
+  if (resizeTimer) clearTimeout(resizeTimer)
+})
 
 defineProps<{
   alarms: Array<{ level: string; message: string }>
@@ -29,6 +50,7 @@ const emit = defineEmits<{
   (e: 'toggle-pv'): void
   (e: 'toggle-ap'): void
   (e: 'toggle-wiggers'): void
+  (e: 'open-controls'): void
 }>()
 
 /** 缓存最后有效标注 */
@@ -68,12 +90,11 @@ const beatKindColors: Record<string, string> = {
     <!-- ═══ Mobile: ECG/PCG flex fill ═══ -->
     <div class="cmd-mobile-only flex flex-col flex-1 min-h-0 gap-1">
       <div class="flex-[3] min-h-[80px]">
-        <CmdEcgWaveform v-if="!store.multiLeadMode" />
-        <EcgMultiLeadDisplay v-else />
+        <CmdEcgWaveform v-if="!store.multiLeadMode" :key="'ecg-m-' + waveformKey" />
+        <EcgMultiLeadDisplay v-else :key="'ml-m-' + waveformKey" />
       </div>
-      <CmdSyncIndicator />
       <div class="flex-[2] min-h-[60px]">
-        <CmdPcgWaveform />
+        <CmdPcgWaveform :key="'pcg-m-' + waveformKey" />
       </div>
     </div>
 
@@ -81,29 +102,26 @@ const beatKindColors: Record<string, string> = {
     <div class="cmd-desktop-only flex flex-col flex-1 min-h-0 gap-1.5">
       <!-- ECG -->
       <div class="cmd-ecg-track min-h-[80px]">
-        <CmdEcgWaveform v-if="!store.multiLeadMode" />
-        <EcgMultiLeadDisplay v-else />
+        <CmdEcgWaveform v-if="!store.multiLeadMode" :key="'ecg-d-' + waveformKey" />
+        <EcgMultiLeadDisplay v-else :key="'ml-d-' + waveformKey" />
       </div>
-
-      <!-- Sync -->
-      <CmdSyncIndicator />
 
       <!-- PCG -->
       <div class="cmd-pcg-track min-h-[60px]">
-        <CmdPcgWaveform />
+        <CmdPcgWaveform :key="'pcg-d-' + waveformKey" />
       </div>
 
-      <!-- Dashboard panel: fills remaining space -->
-      <div class="flex-1 min-h-[80px] flex gap-1.5 overflow-hidden">
-        <!-- Left: Trend chart (always visible) -->
-        <div class="flex-1 min-w-0">
-          <ConductionTrendChart />
+      <!-- Dashboard panel: fills remaining space, items stretch to same height -->
+      <div class="flex-1 min-h-[120px] flex gap-1.5 overflow-hidden">
+        <!-- Left: Quick actions -->
+        <div class="flex-1 min-w-0 flex flex-col">
+          <CmdQuickActions class="flex-1" @open-controls="emit('open-controls')" />
         </div>
 
         <!-- Right: Beat info + Active effects -->
-        <div class="w-[200px] shrink-0 flex flex-col gap-1.5">
+        <div class="w-[200px] shrink-0 flex flex-col gap-1.5 overflow-hidden">
           <!-- Current beat card -->
-          <div class="flex-1 rounded-lg border border-white/[0.06] bg-white/[0.03] p-2.5 flex flex-col justify-center">
+          <div class="flex-1 min-h-0 rounded-lg border border-white/[0.06] bg-white/[0.03] p-2.5 flex flex-col justify-center overflow-auto">
             <div v-if="cachedAnn" class="space-y-2">
               <!-- Beat kind badge -->
               <div class="flex items-center gap-2">
@@ -173,13 +191,13 @@ const beatKindColors: Record<string, string> = {
 
 <style scoped>
 .cmd-ecg-track {
-  height: var(--cmd-ecg-max-height, 180px);
-  max-height: var(--cmd-ecg-max-height, 180px);
+  height: var(--cmd-ecg-max-height, 240px);
+  max-height: var(--cmd-ecg-max-height, 240px);
   flex-shrink: 0;
 }
 .cmd-pcg-track {
-  height: var(--cmd-pcg-max-height, 180px);
-  max-height: var(--cmd-pcg-max-height, 180px);
+  height: var(--cmd-pcg-max-height, 240px);
+  max-height: var(--cmd-pcg-max-height, 240px);
   flex-shrink: 0;
 }
 </style>

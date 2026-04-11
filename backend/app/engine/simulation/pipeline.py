@@ -502,7 +502,12 @@ class SimulationPipeline:
         if not valid:
             valid = ["II"]
         self._selected_leads = valid
+        # Clear ALL signal buffers so everything restarts in sync
+        self._ecg_buf.clear()
         self._ecg_lead_bufs = {}
+        self._pcg_buf.clear()
+        for buf in self._pcg_bufs.values():
+            buf.clear()
 
     # ==================================================================
     # Layer initialisation
@@ -882,14 +887,24 @@ class SimulationPipeline:
         try:
             while self._running:
                 ecg_avail = min(len(self._ecg_buf), ECG_CHUNK_SIZE)
+                # When multi-lead is active, limit to the smallest lead buffer
+                # so all leads output real data (no zero-padding)
+                for buf in self._ecg_lead_bufs.values():
+                    ecg_avail = min(ecg_avail, len(buf))
                 pcg_avail = min(len(self._pcg_buf), PCG_CHUNK_SIZE)
 
                 ecg_frac = ecg_avail / ECG_CHUNK_SIZE if ECG_CHUNK_SIZE > 0 else 0
                 pcg_frac = pcg_avail / PCG_CHUNK_SIZE if PCG_CHUNK_SIZE > 0 else 0
                 drain_frac = min(ecg_frac, pcg_frac) if ecg_frac > 0 and pcg_frac > 0 else max(ecg_frac, pcg_frac)
 
-                ecg_n = max(0, int(ECG_CHUNK_SIZE * drain_frac))
-                pcg_n = max(0, int(PCG_CHUNK_SIZE * drain_frac))
+                # Use round() and lock PCG to exactly 8× ECG to prevent
+                # cumulative drift between ECG (500 Hz) and PCG (4000 Hz).
+                ecg_n = max(0, round(ECG_CHUNK_SIZE * drain_frac))
+                pcg_n = ecg_n * (PCG_SR // ECG_SR)  # strict 1:8 ratio
+
+                # Safety: never pop more than available
+                ecg_n = min(ecg_n, len(self._ecg_buf))
+                pcg_n = min(pcg_n, len(self._pcg_buf))
 
                 ecg_chunk = [self._ecg_buf.popleft() for _ in range(ecg_n)]
                 ecg_start = self._ecg_sample_counter
@@ -899,9 +914,10 @@ class SimulationPipeline:
                 pcg_start = self._pcg_sample_counter
                 self._pcg_sample_counter += pcg_n
 
+                # Drain position channels in sync with main PCG buffer (use pcg_n)
                 pcg_channels: Dict[str, list] = {}
                 for pos, buf in self._pcg_bufs.items():
-                    ch_n = min(len(buf), PCG_CHUNK_SIZE)
+                    ch_n = min(len(buf), pcg_n)
                     ch_chunk = [buf.popleft() for _ in range(ch_n)]
                     pcg_channels[pos] = [round(v, 4) for v in ch_chunk]
 
@@ -920,6 +936,17 @@ class SimulationPipeline:
                     self._recent_beat_annotations.clear()
                     physiology_detail = self._latest_physiology_detail
                     self._latest_physiology_detail = None
+                    # Build conduction trend from recent history (last 60 beats)
+                    conduction_trend_data: list[dict] | None = None
+                    if len(self._conduction_history) > 0:
+                        conduction_trend_data = [
+                            {
+                                "pr_ms": round(a.get("pr_interval_ms", 0)),
+                                "qrs_ms": round(a.get("qrs_duration_ms", 0)),
+                                "qt_ms": round(a.get("qt_interval_ms", 0)),
+                            }
+                            for a in list(self._conduction_history)[-60:]
+                        ]
 
                 current_seq = self._stream_seq
                 self._stream_seq += 1
@@ -936,6 +963,7 @@ class SimulationPipeline:
                         beat_annotations=current_beat_annotations,
                         server_elapsed_sec=server_elapsed,
                         ecg_leads=ecg_leads if ecg_leads else None,
+                        conduction_trend=conduction_trend_data,
                     )
                     try:
                         await self._send_binary_callback(frame_bytes)
@@ -957,6 +985,8 @@ class SimulationPipeline:
                         "vitals": current_vitals,
                         "beat_annotations": current_beat_annotations,
                     }
+                    if conduction_trend_data:
+                        message["conduction_trend"] = conduction_trend_data
                     if ecg_leads:
                         message["ecg_leads"] = {
                             k: [round(v, 4) for v in samples]
