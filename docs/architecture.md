@@ -122,7 +122,7 @@ BeatFlow/
 │   │   │   │   ├── types.py           # 层间数据类型（frozen dataclass）
 │   │   │   │   ├── protocols.py       # 3 层 Protocol 接口
 │   │   │   │   ├── parametric_conduction.py  # Layer 1: 参数化传导网络（timing-based，无 ODE）
-│   │   │   │   ├── ecg_synthesizer.py        # Layer 2a: Gaussian 基函数 12 导联 ECG 合成
+│   │   │   │   ├── ecg_synthesizer.py        # Layer 2a: VCG 中间表示 + Dower 逆变换 12 导联 ECG 合成
 │   │   │   │   ├── parametric_pcg.py         # Layer 2b: 参数化 PCG 合成（Weissler LVET + 模态分解 + AGC）
 │   │   │   │   ├── algebraic_hemo.py         # Layer 3: 代数血流动力学（无 ODE）
 │   │   │   │   ├── qt_dynamics.py            # QT 动态适配（Bazett + 电解质/药物/缺血效应）
@@ -178,8 +178,8 @@ BeatFlow/
 │
 ├── frontend/
 │   ├── src/
-│   │   ├── views/                     # 12 个页面组件（含 virtual-human/VirtualHumanView）
-│   │   ├── components/                # 25 个 UI 组件（含 virtual-human/ 7 个）
+│   │   ├── views/                     # 12 个页面组件（含 virtual-human/VirtualHumanV2View 响应式主版本）
+│   │   ├── components/                # UI 组件（含 virtual-human/ 旧版 + virtual-human-v2/ 新版 Command Center 12 个）
 │   │   ├── composables/               # Composables（含 useScrollingCanvas.ts [Catmull-Rom 插值 + Bezier 渲染 + 高斯平滑], useVirtualHumanRecorder.ts）
 │   │   ├── lib/                       # 工具库
 │   │   │   └── wsBinaryProtocol.ts    # 二进制 WS 帧前端解码器（decodeBinaryFrame + VitalsDelta 合并）
@@ -598,26 +598,40 @@ POSITION_WEIGHTS = {
 
 详见 [`docs/v2-engine-roadmap.md` 附录](./v2-engine-roadmap.md#附录v2-命令覆盖现状对照表) 的完整对照表。
 
-### ECG Gaussian 超位合成（v2 实现）
-- `EcgSynthesizerV2._build_lead_ii()` 接收 `ConductionResult`，根据 `beat_kind` 分派到专门的形态生成器
-- **Sinus/SVT/AF 形态**（`_build_sinus_morphology`）：
-  - P 波：SA 激活时刻 + σ=40ms（主) + σ=30ms (尾)
-  - QRS：His 激活时刻作为中心，Q(-0.10@-10ms) + R(1.20@+5ms) + S(-0.15@+20ms)，σ=4-5ms
-  - T 波：Purkinje 复极后 110ms 开始，两个高斯分量 (σ=45/40ms, amp=0.25/0.10)
-  - P 波仅在 `p_wave_present=True` 时绘制
-- **VT 形态**（`_build_vt_morphology`）：
-  - 无 P 波（心室起搏器驱动）
-  - QRS 中心于 Purkinje 激活 + 40ms，宽怪异形态：σ=12-20ms，包含 R' 切迹
-  - 倒置 T 波（与 QRS 极性相反）
-- **PVC 形态**（`_build_pvc_morphology`）：
-  - 可选 P 波（可能进行性）
-  - QRS 中心于 Purkinje 激活 + 20ms，宽 σ=10-15ms
-  - 倒置 T 波（继发性改变）
-- **VF 形态**（`_build_vf_morphology`）：
-  - 8 个随机频率正弦波 (2-8Hz)，随机相位和幅度
-  - 包络调制 (waxing/waning)，整体幅度 0.6× 正常 R 峰
-- **基线校正**：减去第 5 百分位数，确保零均值，防止 DC 漂移
-- **幅度归一化**：峰值规范化后乘以 `_MV_SCALE (≈1.8mV R 峰值)`
+### ECG VCG 中间表示合成（v2 实现）
+
+采用**心脏电向量 (VCG) 中间表示 + Dower 逆变换**架构，替代旧版"单导联生成+线性缩放"。核心流程：
+
+1. **VCG 三分量构建**：在 5000Hz 内部采样率用高斯基函数构建 X（左-右）、Y（足-头）、Z（前-后）三个正交分量
+2. **Dower 逆变换投影**：(8×3) 矩阵将 VCG 投影到 I, II, V1-V6 共 8 个导联
+3. **Einthoven 保证**：III = II - I（计算而非独立投影），aVR/aVL/aVF 从 I/II/III 派生
+4. **降采样 + 噪声**：5000→500Hz + 每导联独立电极噪声
+
+**VCG 分量特征**：
+- **X 分量**（左-右）：P 波正向，QRS 先负后正（间隔→自由壁），T 波正向
+- **Y 分量**（足-头，≈Lead II）：经典 P-QRS-T 形态
+- **Z 分量**（前-后，关键差异源）：P 波先正后负（→V1 双相 P），QRS 先正后负（间隔向前→V1 r 波，自由壁向后→V1 深 S），T 波通常负向（→V1-V3 T 可倒置）
+
+**导联形态效果**：
+- V1：rS 形态（Z 分量主导，小 r + 深 S）
+- V2-V3：过渡区 RS 形态
+- V4-V6：qRs 形态（X 分量主导，高 R 波）
+- aVR：倒置 P-QRS-T（Goldberger 定义自然产生）
+
+**beat_kind 分派**：
+- `_build_sinus_vcg`：Sinus/SVT/AF，三分量独立 P-QRS-T + QT 动态 + 缺血 ST + 电解质 T 波
+- `_build_vt_vcg`：VT，三分量均宽大异常 QRS + 不协调 T 波
+- `_build_pvc_vcg`：PVC，类似 VT 但单拍，可选 P 波
+- `_build_vf_vcg`：VF，三分量各自独立混沌信号（产生导联间不同的混沌形态）
+
+**归一化策略**：对 Y 分量做 peak 归一化（R 峰≈1.8mV），X/Z 乘以相同 scale factor 保持比例关系
+
+**病理导联特异性**：
+- 缺血 ST 改变同时作用于 Y（→下壁 II/III/aVF）和 Z（→前壁 V1-V4）分量
+- 高钾血症 T 波在三分量均变窄变高
+- 低钾血症 T 波在 Y/Z 变平，U 波主要出现在 Y 分量
+
+**P-on-T 融合**：三分量各自维护 T 波溢出缓冲区（`_t_wave_carryover_x/y/z`），高心率时跨拍衔接
 
 ---
 

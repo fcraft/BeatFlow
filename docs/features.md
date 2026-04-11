@@ -425,19 +425,21 @@ FileAssociation {
 | **事件标记** | 自动生成 `ron_t`（R-on-T PVC）、`vt`（室速段）、`vf`（室颤段）、`other`（窦律恢复）标记 |
 | **预设模板** | R-on-T→VT、R-on-T→VF、R-on-T 随机结局 |
 
-### ECG 合成引擎（v2 高精度）
+### ECG 合成引擎（v2 VCG 架构）
 | 特性 | 说明 |
 |------|------|
-| **Gaussian 超位叠加法** | 用高斯基函数叠加 P/QRS/T 波，避免伪影和尖锐脉冲 |
-| **节奏感知形态** | beat_kind 驱动形态选择：sinus (P-QRS-T) / SVT/AF (无P) / VT (宽怪异QRS+倒T) / PVC (宽QRS+倒T) / VF (混沌多频) |
-| **QRS-S1 时间对齐** | elastance 曲线预填充，使 S1 (二尖瓣闭合) 在 QRS 发生后 10-30ms，而非心拍开始 |
-| **心率自适应收缩时间** | Weissler 关系式 LVET ≈ -1.7 × HR + 413ms 用于elastance 曲线缩放，确保低HR时S1-S2更长 |
-| **Purkinje 激活驱动** | 部分重构使用 Mitchell-Schaeffer 细胞模型的钙过渡而非 dVm/dt |
-| **VT/PVC 专门形态** | VT: wide σ=0.012-0.020, no P, inverted T；PVC: wide QRS, optional P-wave, inverted T |
-| **VF 混沌振荡** | 8 个随机频率正弦波 (2-8Hz) 叠加，包络调制 |
-| **P 波条件渲染** | P 波仅在 p_wave_present=true 时绘制（AF 无P） |
-| **基线校正** | 减去第5百分位数确保零均值，防止DC漂移 |
-| **幅度归一化** | 峰值规范化到[-1,1]再乘以 _MV_SCALE (≈1.8mV R峰) |
+| **VCG 中间表示** | 构建 X/Y/Z 三正交分量（心脏电向量环），通过 Dower 逆变换矩阵投影到 12 标准导联 |
+| **导联独立形态** | V1 呈 rS 形态（小 r+深 S），V2-V3 过渡 RS，V4-V6 呈 qRs（高 R+小 s），各导联 P/T 波极性独立 |
+| **Gaussian 基函数** | 三分量均用高斯基函数叠加 P/QRS/T 波，避免伪影和尖锐脉冲 |
+| **节奏感知形态** | beat_kind 驱动 VCG 形态选择：sinus (三分量 P-QRS-T) / VT (三分量宽异常QRS) / PVC / VF (三分量独立混沌) |
+| **Einthoven 精确保证** | III = II - I 计算得出（非独立投影），相关系数 > 0.99 |
+| **缺血导联特异性** | ST 改变同时作用 Y（→下壁）和 Z（→前壁 V1-V4）分量，自然产生区域性 ST 改变 |
+| **电解质导联差异** | 高钾 T 波在三分量均变尖变窄；低钾 T 波在 Y/Z 变平 + U 波 |
+| **QRS-S1 时间对齐** | elastance 曲线预填充，使 S1 (二尖瓣闭合) 在 QRS 发生后 10-30ms |
+| **心率自适应收缩时间** | Weissler 关系式 LVET ≈ -1.7 × HR + 413ms |
+| **P-on-T 融合** | 三分量各自维护 T 波溢出缓冲区，高心率时跨拍衔接 |
+| **基线校正** | Y 分量减去第5百分位数确保零均值，X/Z 同步缩放 |
+| **幅度归一化** | Y 分量峰值规范化到 _MV_SCALE (≈1.8mV)，X/Z 按比例缩放 |
 
 ### 请求参数
 ```json
@@ -625,7 +627,7 @@ CommunityPost {
 - **活动状态可视化**：从后端 vitals 派生所有活动效果（运动/情绪/病变/药物/体内状态/电解质），ActiveEffectsBar 药丸条一览全局状态，Tab 自动高亮匹配当前生理状态的按钮，ControlPanel Tab 标签显示数字徽章，VitalsDashboard 新增电解质/药物浓度/心脏结构面板
 - **动画平滑**：波形渲染使用中点二次贝塞尔曲线，消除阶梯感；QRS 尖峰保护（Y差>25%自动回退 lineTo 保持锐利）；渐进 drift 软校正（小偏差每 chunk 修正 20%，大偏差硬重置）；**帧锁定虚拟播放头**（draw 内每帧固定步长推进 + 2% 柔性修正，替代 performance.now 推算，消除峰值闪烁）；**非对称 Y 轴缩放**（扩展快 0.3 / 收缩慢 0.02，防止垂直抖动）
 - **信号平滑选项**：前端可选高斯平滑滤波（off/low/high），低档 3 点核 [0.15,0.70,0.15]，高档 7 点核 [0.03,0.10,0.22,0.30,0.22,0.10,0.03]，有效减少噪声同时保留 QRS 形态
-- **12 导联 ECG**：后端从 Lead II 合成其余 11 个标准导联（I/III/aVR/aVL/aVF/V1-V6），基于组件的导联变换（P/QRS/T 分区域系数），V1→V6 R 波递增，PVC 导联形态与起源位置（LVOT/RVOT/间隔/心尖）对应；前端导联选择器 + 自适应 grid 布局（1/2/4 列）
+- **12 导联 ECG**：后端通过 VCG（心脏电向量）中间表示 + Dower 逆变换合成 12 标准导联，各导联具有独立生理形态（V1 rS→V6 qRs 过渡、V1 双相 P 波、aVR 倒置），满足 Einthoven 约束（III=II-I）；缺血/电解质异常在不同导联有差异化表现；前端导联选择器支持 5 种预设组合（Lead II / 肢体6导 / 胸前6导 / 标准12导 / 节律监测 II+V1+V5）+ 肢体/胸前分组全选 + 自适应 grid 布局（1/2/4 列）
 - **临床报警系统**：5 项生命体征（HR/SBP/SpO2/RR/Temp）双级阈值（warning/critical）+ 3 种致命节律（VF/VT/Asystole）自动报警；Web Audio API 合成蜂鸣音（warning 440Hz / critical 880Hz 重复），无 AudioContext 时静默降级；报警横幅 + VitalsBar 闪烁动画 + 静音按钮
 - **ECG 卡尺测量**：冻结当前波形 → 点击放置标记点（最多 3 对）→ 像素距离自动换算为毫秒间期和等效 BPM；彩色连线可视化
 - **节律条导出**：一键截取当前 ECG canvas → 叠加患者生命体征和导联标注 header → PNG 下载
@@ -715,7 +717,7 @@ v2 `SimulationPipeline.apply_command()` 仅实现 12/48 个交互命令（25%）
   - `InteractionRegistry` — 可扩展交互注册表
   - `StateDynamicsEngine` — 状态动力学规则引擎（含 VtToVfDeteriorationRule、统一 HemodynamicCouplingRule）
   - `PvcScheduler` — PVC 调度器（coupling interval + 代偿间歇 + NSVT 触发）
-  - `lead_synthesis` — 12 导联 ECG 合成模块（从 Lead II 基础信号合成其余 11 个导联，基于组件 P/QRS/T 分区域系数变换，含 PVC 起源位置导联修正）
+  - `lead_synthesis` — 12 导联 ECG 合成模块（VCG 三分量中间表示 + Dower 逆变换投影，各导联独立形态）
 - 数据模型：`VirtualHumanProfile` — 虚拟人档案（user_id, name, state_snapshot JSONB）
 - WebSocket 端点：支持 profile_id 参数，有档案时加载快照/断开自动保存
 - REST API：档案 CRUD 端点
@@ -909,8 +911,8 @@ v2 `SimulationPipeline.apply_command()` 仅实现 12/48 个交互命令（25%）
 | `/sync/:id` | SyncViewerView | ✅ | 多轨同步播放（关联组） |
 | `/community` | CommunityView | ✅ | 社区论坛 |
 | `/simulate` | SimulatorView | ✅ | 信号模拟生成器 |
-| `/virtual-human` | VirtualHumanView | ✅ | 虚拟人体实时仿真（旧版上下堆叠布局） |
-| `/virtual-human-v2` | VirtualHumanV2View | ✅ | 虚拟人体 Command Center V2（左右分栏指挥中心式布局） |
+| `/virtual-human-legacy` | VirtualHumanView | ✅ | 虚拟人体实时仿真（旧版上下堆叠布局） |
+| `/virtual-human` | VirtualHumanV2View | ✅ | 虚拟人体 Command Center V2（左右分栏+响应式移动端布局） |
 | `/inbox` | InboxView | ✅ | 收件箱（通知/邀请管理） |
 | `/admin` | AdminView | ✅（admin） | 系统管理后台 |
 
@@ -937,6 +939,24 @@ v2 `SimulationPipeline.apply_command()` 仅实现 12/48 个交互命令（25%）
 | `MemberManager.vue` | 成员邀请/角色管理 |
 | `AssociationManager.vue` | 文件关联配置 |
 | `ProjectSettings.vue` | 项目设置（名称/描述/公开性） |
+
+### Virtual Human V2 组件（Command Center 布局）
+| 组件 | 路径 | 说明 |
+|------|------|------|
+| `CmdStatusBar` | `virtual-human-v2/CmdStatusBar.vue` | 极简顶部状态条，移动端精简（隐藏录制/卡尺/导出按钮） |
+| `CmdWaveflowPanel` | `virtual-human-v2/CmdWaveflowPanel.vue` | 波形流容器，ECG/PCG 限高（var(--cmd-ecg-max-height) / var(--cmd-pcg-max-height)），多余空间给趋势图 |
+| `CmdEcgWaveform` | `virtual-human-v2/CmdEcgWaveform.vue` | ECG Canvas（复用 useScrollingCanvas） |
+| `CmdPcgWaveform` | `virtual-human-v2/CmdPcgWaveform.vue` | PCG Canvas + 音频控制 |
+| `CmdVitalsSidebar` | `virtual-human-v2/CmdVitalsSidebar.vue` | 右侧生命体征卡片（桌面端 200px，移动端隐藏） |
+| `CmdMobileVitals` | `virtual-human-v2/CmdMobileVitals.vue` | 移动端底部水平生命体征条 + 详情抽屉（替代 sidebar） |
+| `CmdControlOverlay` | `virtual-human-v2/CmdControlOverlay.vue` | 控制面板：桌面居中 Overlay / 移动端底部 Sheet |
+| `CmdWaveformToolbar` | `virtual-human-v2/CmdWaveformToolbar.vue` | 波形工具条，移动端隐藏趋势/PV/AP/Wiggers |
+| `CmdTimelineTrack` | `virtual-human-v2/CmdTimelineTrack.vue` | 底部时间线（桌面端可见） |
+| `CmdSyncIndicator` | `virtual-human-v2/CmdSyncIndicator.vue` | ECG-PCG 同步时序薄条 |
+| `CmdProfileSelector` | `virtual-human-v2/CmdProfileSelector.vue` | 档案选择器（含搜索/创建/删除） |
+| `cmd-tokens.css` | `virtual-human-v2/cmd-tokens.css` | 设计 Token（CSS 变量 + 移动端断点覆盖 + 工具类） |
+
+**响应式策略**：`cmd-tokens.css` 中 `@media (max-width: 767px)` 覆盖 CSS 变量（sidebar=0, 波形限高缩小），`.cmd-desktop-only` / `.cmd-mobile-only` 工具类控制元素显隐。
 
 ### Composables
 | Composable | 文件 | 职责 |

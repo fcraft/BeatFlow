@@ -129,3 +129,11 @@
     linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
   background-size: 25% 25%;
 }
+
+/* ── Mobile utility: hide on mobile ── */
+@media (max-width: 767px) {
+  .cmd-desktop-only { display: none !important; }
+}
+@media (min-width: 768px) {
+  .cmd-mobile-only { display: none !important; }
+}

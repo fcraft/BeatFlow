@@ -1,15 +1,18 @@
 """ECG synthesizer: convert conduction network output to 12-lead surface ECG.
 
-Takes the 4-node action potential traces from ConductionNetworkV2 and projects
-them onto body-surface leads using Dower-like transformation coefficients.
+V2 architecture: VCG (Vectorcardiogram) intermediate representation.
 
 Pipeline:
-  1. Build Lead II (primary) as weighted sum of node AP vm_traces
-  2. Derive remaining leads ensuring Einthoven: II = I + III
-  3. Downsample from 5000 Hz (cell model) to target sample_rate (default 500 Hz)
-  4. Add configurable electrode noise from modifiers.electrode_noise
+  1. Build 3 orthogonal VCG components (X=left-right, Y=foot-head, Z=front-back)
+     using Gaussian basis functions at 5000 Hz internal rate
+  2. Project VCG to 12 standard leads via Dower inverse transform matrix
+  3. Guarantee Einthoven constraint: III = II - I (computed, not projected)
+  4. Downsample from 5000 Hz to target sample_rate (default 500 Hz)
+  5. Add configurable per-lead electrode noise
 """
 from __future__ import annotations
+
+from dataclasses import dataclass
 
 import numpy as np
 from numpy.typing import NDArray
@@ -20,42 +23,49 @@ from app.engine.core.types import ConductionResult, EcgFrame, Modifiers
 # Internal cell-model sample rate
 _CELL_RATE = 5000
 
-# Node contribution weights for building Lead II
-# SA node vm_trace → P wave, AV node overlaps with PR segment,
-# His bundle → initial QRS, Purkinje → main QRS + T wave (repolarisation)
-_NODE_WEIGHTS: dict[str, float] = {
-    'sa': 0.12,        # P wave contribution
-    'av': 0.03,        # minimal direct surface contribution
-    'his': 0.25,       # early ventricular depolarisation
-    'purkinje': 0.60,  # dominant ventricular complex
-}
-
-# Amplitude scaling so Lead II R-peak lands near 1.0 mV
+# Amplitude scaling so Lead II R-peak lands near 1.0-1.8 mV
 _MV_SCALE = 1.8
 
-# Lead I fraction of Lead II (used to guarantee Einthoven)
-_LEAD_I_FRACTION = 0.6
+# ---------------------------------------------------------------------------
+# Dower inverse transform coefficients: VCG (X, Y, Z) → 12-lead ECG
+# Rows: I, II, V1, V2, V3, V4, V5, V6
+# III, aVR, aVL, aVF derived from I/II to guarantee Einthoven exactly.
+# Reference: Dower et al., "Deriving the 12-lead ECG from VCG leads"
+# Coefficients tuned for parametric simulation quality.
+# ---------------------------------------------------------------------------
+_DOWER_INV = np.array([
+    # X        Y        Z         ← VCG component
+    [ 0.632, -0.235,  0.059],    # Lead I
+    [-0.235,  1.066, -0.132],    # Lead II
+    [-0.515,  0.157,  0.917],    # V1
+    [ 0.044,  0.164,  1.387],    # V2
+    [ 0.882,  0.098,  1.277],    # V3
+    [ 1.213,  0.127,  0.601],    # V4
+    [ 1.125,  0.127, -0.086],    # V5
+    [ 0.831,  0.076, -0.230],    # V6
+], dtype=np.float64)
 
-# Precordial (V-lead) coefficients relative to Lead II
-_V_LEAD_COEFFICIENTS: dict[str, float] = {
-    'V1': -0.50,
-    'V2':  0.20,
-    'V3':  0.60,
-    'V4':  0.90,
-    'V5':  0.80,
-    'V6':  0.50,
-}
+# Map from row index in _DOWER_INV to lead name
+_DOWER_LEAD_NAMES = ['I', 'II', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6']
+
+
+@dataclass
+class _VcgComponents:
+    """Internal VCG 3-component intermediate representation (not public API)."""
+    x: NDArray[np.float64]   # Left-right axis
+    y: NDArray[np.float64]   # Foot-head axis (≈ Lead II direction)
+    z: NDArray[np.float64]   # Front-back axis (key for V-lead transition)
 
 
 class EcgSynthesizerV2:
-    """Synthesize 12-lead ECG from conduction network output."""
+    """Synthesize 12-lead ECG from conduction network output via VCG."""
 
     def __init__(self, sample_rate: int = 500) -> None:
         self.sample_rate = sample_rate
-        # T-wave carryover buffer: when T-wave extends beyond beat boundary
-        # at high HR, the overflow is stored here and added to the next beat's
-        # beginning, creating P-on-T fusion instead of T-wave disappearance.
-        self._t_wave_carryover: NDArray[np.float64] | None = None
+        # T-wave carryover buffer per VCG component for P-on-T fusion
+        self._t_wave_carryover_x: NDArray[np.float64] | None = None
+        self._t_wave_carryover_y: NDArray[np.float64] | None = None
+        self._t_wave_carryover_z: NDArray[np.float64] | None = None
 
     # ------------------------------------------------------------------
     # Public API
@@ -77,22 +87,27 @@ class EcgSynthesizerV2:
         Returns:
             EcgFrame with downsampled lead arrays and beat annotations.
         """
-        # 1. Build Lead II at cell-model rate (5000 Hz)
-        lead_ii_raw = self._build_lead_ii(conduction, modifiers)
+        # 1. Build VCG components at cell-model rate (5000 Hz)
+        vcg = self._build_vcg(conduction, modifiers)
 
         # 1b. Apply T-wave carryover from previous beat (P-on-T fusion)
-        if self._t_wave_carryover is not None and len(self._t_wave_carryover) > 0:
-            overlap = min(len(self._t_wave_carryover), len(lead_ii_raw))
-            lead_ii_raw[:overlap] += self._t_wave_carryover[:overlap]
-            self._t_wave_carryover = None
+        for attr, comp in [
+            ('_t_wave_carryover_x', 'x'),
+            ('_t_wave_carryover_y', 'y'),
+            ('_t_wave_carryover_z', 'z'),
+        ]:
+            carry = getattr(self, attr)
+            arr = getattr(vcg, comp)
+            if carry is not None and len(carry) > 0:
+                overlap = min(len(carry), len(arr))
+                arr[:overlap] += carry[:overlap]
+                setattr(self, attr, None)
 
         # 1c. Compute and save T-wave overflow for next beat
-        self._t_wave_carryover = self._compute_t_wave_overflow(
-            conduction, modifiers,
-        )
+        self._compute_t_wave_overflow_vcg(conduction, modifiers)
 
-        # 2. Derive all requested leads at cell-model rate
-        raw_leads = self._derive_leads(lead_ii_raw, leads)
+        # 2. Project VCG to requested leads
+        raw_leads = self._project_vcg_to_leads(vcg, leads)
 
         # 3. Downsample to target sample_rate
         target_len = int(conduction.rr_sec * self.sample_rate)
@@ -126,86 +141,58 @@ class EcgSynthesizerV2:
         )
 
     # ------------------------------------------------------------------
-    # Internal helpers
+    # VCG construction (dispatches by beat_kind)
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def _build_lead_ii(
+    def _build_vcg(
+        self,
         conduction: ConductionResult,
         modifiers: Modifiers | None = None,
-    ) -> NDArray[np.float64]:
-        """Build Lead II using Gaussian-based morphology from V2 conduction model.
-
-        Supports beat_kind-aware morphology:
-        - 'sinus' / 'svt' / 'af': Normal P-QRS-T (SVT/AF may lack P-wave)
-        - 'vt': Wide bizarre QRS from ventricular ectopic, no P-wave, inverted T
-        - 'pvc': Wide QRS, may have preceding P-wave, inverted T
-        - 'vf': Chaotic (handled separately, produces random oscillation)
-        - 'asystole': Flat line (handled separately)
-        """
-        sr = _CELL_RATE  # 5000 Hz
-        n = int(conduction.rr_sec * sr)  # Total samples in RR interval
-        t = np.arange(n) / sr  # Time array in seconds
+    ) -> _VcgComponents:
+        """Build VCG 3-component representation for one beat."""
+        sr = _CELL_RATE
+        n = int(conduction.rr_sec * sr)
+        t = np.arange(n, dtype=np.float64) / sr
 
         beat_kind = conduction.beat_kind
 
-        # Dispatch to specialised morphology builders
         if beat_kind == 'vt':
-            return EcgSynthesizerV2._build_vt_morphology(t, n, conduction)
+            return self._build_vt_vcg(t, n, conduction)
         elif beat_kind == 'pvc':
-            return EcgSynthesizerV2._build_pvc_morphology(t, n, conduction)
+            return self._build_pvc_vcg(t, n, conduction)
         elif beat_kind == 'vf':
-            return EcgSynthesizerV2._build_vf_morphology(t, n)
+            return self._build_vf_vcg(t, n)
         elif beat_kind == 'asystole':
-            return np.zeros(n, dtype=np.float64)
+            z = np.zeros(n, dtype=np.float64)
+            return _VcgComponents(x=z.copy(), y=z.copy(), z=z.copy())
 
-        # --- Normal sinus / SVT / AF morphology ---
-        return EcgSynthesizerV2._build_sinus_morphology(t, n, conduction, modifiers)
+        return self._build_sinus_vcg(t, n, conduction, modifiers)
+
+    # ------------------------------------------------------------------
+    # Sinus VCG (also SVT / AF)
+    # ------------------------------------------------------------------
 
     @staticmethod
-    def _build_sinus_morphology(
+    def _build_sinus_vcg(
         t: NDArray[np.float64],
         n: int,
         conduction: ConductionResult,
         modifiers: Modifiers | None = None,
-    ) -> NDArray[np.float64]:
-        """Normal sinus P-QRS-T morphology (also used for SVT/AF).
+    ) -> _VcgComponents:
+        """Build VCG for normal sinus / SVT / AF beats.
 
-        Enhanced with:
-        - QT-dynamic T-wave positioning (from qt_adapted_ms)
-        - Ischemia ST-segment depression/elevation
-        - Electrolyte-sensitive T-wave morphology
+        Each component (X, Y, Z) has independent P-QRS-T morphology with
+        physiologically motivated amplitudes and timing.
         """
-        lead_ii = np.zeros(n, dtype=np.float64)
+        _g = EcgSynthesizerV2._gaussian
+        x = np.zeros(n, dtype=np.float64)
+        y = np.zeros(n, dtype=np.float64)
+        z = np.zeros(n, dtype=np.float64)
 
-        # Extract conduction timing (in seconds)
         act_times = {k: v / 1000.0 for k, v in conduction.activation_times.items()}
+        apds = {k: ap.apd_ms / 1000.0 for k, ap in conduction.node_aps.items()}
 
-        # Extract APD (in seconds)
-        apds = {
-            k: ap.apd_ms / 1000.0
-            for k, ap in conduction.node_aps.items()
-        }
-
-        # --- P WAVE ---
-        if conduction.p_wave_present:
-            t_p = act_times['sa']
-            p_main = EcgSynthesizerV2._gaussian(t, t_p, sigma=0.040, amplitude=0.12)
-            p_tail = EcgSynthesizerV2._gaussian(t, t_p + 0.060, sigma=0.030, amplitude=0.03)
-            lead_ii += p_main + p_tail
-
-        # --- QRS COMPLEX ---
-        t_qrs = act_times['his']
-
-        # Q wave
-        lead_ii += EcgSynthesizerV2._gaussian(t, t_qrs - 0.010, sigma=0.005, amplitude=-0.10)
-        # R wave
-        lead_ii += EcgSynthesizerV2._gaussian(t, t_qrs + 0.005, sigma=0.004, amplitude=1.20)
-        # S wave
-        lead_ii += EcgSynthesizerV2._gaussian(t, t_qrs + 0.020, sigma=0.005, amplitude=-0.15)
-
-        # --- QT-dynamic T WAVE positioning ---
-        # Use qt_adapted_ms from Modifiers if available; otherwise Purkinje APD
+        # --- Extract modifiers ---
         qt_ms = 0.0
         ischemia_level = 0.0
         potassium = 4.0
@@ -214,215 +201,343 @@ class EcgSynthesizerV2:
             ischemia_level = getattr(modifiers, 'ischemia_level', 0.0)
             potassium = getattr(modifiers, 'potassium_level', 4.0)
 
+        # ==============================================================
+        # P WAVE — atrial depolarisation
+        # ==============================================================
+        if conduction.p_wave_present:
+            t_p = act_times['sa']
+            # X: positive (atria depolarise left)
+            x += _g(t, t_p, sigma=0.040, amplitude=0.08)
+            x += _g(t, t_p + 0.050, sigma=0.030, amplitude=0.02)
+            # Y: positive (atria depolarise inferiorly)
+            y += _g(t, t_p, sigma=0.040, amplitude=0.12)
+            y += _g(t, t_p + 0.060, sigma=0.030, amplitude=0.03)
+            # Z: biphasic — positive then negative (classic V1 P-wave)
+            z += _g(t, t_p, sigma=0.030, amplitude=0.06)
+            z += _g(t, t_p + 0.060, sigma=0.025, amplitude=-0.04)
+
+        # ==============================================================
+        # QRS COMPLEX — ventricular depolarisation
+        # ==============================================================
+        t_qrs = act_times['his']
+
+        # --- X component (left-right) ---
+        # Septal depolarisation: brief rightward (negative X), then leftward
+        x += _g(t, t_qrs - 0.008, sigma=0.004, amplitude=-0.08)   # septal q
+        x += _g(t, t_qrs + 0.006, sigma=0.005, amplitude=0.90)    # main R
+        x += _g(t, t_qrs + 0.022, sigma=0.005, amplitude=-0.10)   # small s
+
+        # --- Y component (foot-head, ≈ Lead II direction) ---
+        # Classic Lead-II-like QRS
+        y += _g(t, t_qrs - 0.010, sigma=0.005, amplitude=-0.10)   # Q wave
+        y += _g(t, t_qrs + 0.005, sigma=0.004, amplitude=1.20)    # R wave
+        y += _g(t, t_qrs + 0.020, sigma=0.005, amplitude=-0.15)   # S wave
+
+        # --- Z component (front-back) — KEY for V-lead transition ---
+        # Septal depolarisation goes anterior (positive Z → V1 small r)
+        # Free wall depolarisation goes posterior (negative Z → V1 deep S)
+        z += _g(t, t_qrs - 0.005, sigma=0.004, amplitude=0.35)    # septal r (→ V1 r)
+        z += _g(t, t_qrs + 0.008, sigma=0.006, amplitude=-0.85)   # free wall (→ V1 S)
+        z += _g(t, t_qrs + 0.025, sigma=0.005, amplitude=0.08)    # terminal
+
+        # ==============================================================
+        # T WAVE — ventricular repolarisation
+        # ==============================================================
         if qt_ms > 200.0:
-            # T-wave peak = QRS onset + QT interval - ~60ms (T peak before QT end)
             t_t_peak = t_qrs + (qt_ms / 1000.0) - 0.060
         else:
-            # Fallback to Purkinje APD based positioning
             t_t_start = act_times['purkinje'] + apds['purkinje']
             t_t_peak = t_t_start + 0.110
 
-        # Clamp T-wave peak so it stays within the beat boundary.
-        # At high HR the QT pushes T-wave near/beyond rr_sec; without
-        # clamping the Gaussian naturally decays to zero and T disappears.
-        # The overflow portion is handled separately via _compute_t_wave_overflow.
         rr_sec = conduction.rr_sec
-        max_t_peak = rr_sec - 0.060  # leave 60ms margin for tail
+        max_t_peak = rr_sec - 0.060
         t_t_peak = min(t_t_peak, max_t_peak)
 
-        # T-wave amplitude modulation by ischemia and electrolytes
-        t_amplitude = 0.25
-        t_tail_amplitude = 0.10
+        # Base T-wave amplitudes per component
+        ty_amp = 0.25       # Y: upright T in inferior leads
+        tx_amp = 0.15       # X: upright T in lateral leads
+        tz_amp = -0.10      # Z: negative → V1-V3 T inversion/low amplitude
 
-        # Hyperkalaemia → tall peaked T waves
+        t_tail_y = 0.10
+        t_tail_x = 0.06
+        t_tail_z = -0.04
+
+        # --- Electrolyte modulation ---
+        t_sigma = 0.045
         if potassium > 5.5:
             k_excess = potassium - 5.5
-            t_amplitude += 0.15 * min(k_excess, 2.0)
-            # Also narrows the T wave
+            # Hyperkalaemia: tall peaked T in all components
+            ty_amp += 0.15 * min(k_excess, 2.0)
+            tx_amp += 0.10 * min(k_excess, 2.0)
+            tz_amp -= 0.08 * min(k_excess, 2.0)  # more negative Z → peaked V1-V3 T
             t_sigma = max(0.025, 0.045 - 0.008 * k_excess)
         elif potassium < 3.0:
-            # Hypokalaemia → flat/inverted T, prominent U wave
             k_deficit = 3.0 - potassium
-            t_amplitude -= 0.20 * min(k_deficit, 1.0)
-            t_sigma = 0.045
-        else:
-            t_sigma = 0.045
+            ty_amp -= 0.20 * min(k_deficit, 1.0)
+            tx_amp -= 0.12 * min(k_deficit, 1.0)
+            tz_amp += 0.05 * min(k_deficit, 1.0)  # flatten Z T-wave
 
-        lead_ii += EcgSynthesizerV2._gaussian(t, t_t_peak, sigma=t_sigma, amplitude=t_amplitude)
-        lead_ii += EcgSynthesizerV2._gaussian(t, t_t_peak + 0.080, sigma=0.040, amplitude=t_tail_amplitude)
+        # Apply T-wave
+        x += _g(t, t_t_peak, sigma=t_sigma, amplitude=tx_amp)
+        x += _g(t, t_t_peak + 0.080, sigma=0.040, amplitude=t_tail_x)
 
-        # --- Hypokalaemia U wave ---
+        y += _g(t, t_t_peak, sigma=t_sigma, amplitude=ty_amp)
+        y += _g(t, t_t_peak + 0.080, sigma=0.040, amplitude=t_tail_y)
+
+        z += _g(t, t_t_peak, sigma=t_sigma, amplitude=tz_amp)
+        z += _g(t, t_t_peak + 0.080, sigma=0.040, amplitude=t_tail_z)
+
+        # --- Hypokalaemia U wave (mainly in Y component) ---
         if potassium < 3.0:
             k_deficit = 3.0 - potassium
-            u_amplitude = 0.08 * min(k_deficit, 1.0)
+            u_amp = 0.08 * min(k_deficit, 1.0)
             u_time = t_t_peak + 0.180
-            lead_ii += EcgSynthesizerV2._gaussian(t, u_time, sigma=0.050, amplitude=u_amplitude)
+            y += _g(t, u_time, sigma=0.050, amplitude=u_amp)
+            x += _g(t, u_time, sigma=0.050, amplitude=u_amp * 0.4)
 
         # --- Ischemia ST-segment modification ---
         if ischemia_level > 0.05:
-            # ST depression: horizontal/downsloping ST below baseline
-            st_start = t_qrs + 0.040   # J-point (end of QRS)
-            st_end = t_t_peak - 0.040  # Before T-wave upstroke
-
-            # ST depression magnitude: up to -0.3 mV at severe ischemia
-            st_depression = -0.30 * ischemia_level
-
-            # Broad Gaussian for ST segment depression
+            st_start = t_qrs + 0.040
+            st_end = t_t_peak - 0.040
             st_center = (st_start + st_end) / 2.0
             st_sigma = max(0.020, (st_end - st_start) / 3.0)
-            lead_ii += EcgSynthesizerV2._gaussian(
-                t, st_center, sigma=st_sigma, amplitude=st_depression
-            )
+            st_depression = -0.30 * ischemia_level
 
-            # T-wave inversion in ischemia (partial to full)
+            # ST depression primarily in Y and Z components
+            # Y → affects inferior leads (II, III, aVF)
+            y += _g(t, st_center, sigma=st_sigma, amplitude=st_depression)
+            # Z → affects anterior/precordial leads (V1-V4)
+            z += _g(t, st_center, sigma=st_sigma, amplitude=st_depression * 0.8)
+            # X → affects lateral leads (I, aVL, V5-V6)
+            x += _g(t, st_center, sigma=st_sigma, amplitude=st_depression * 0.5)
+
+            # T-wave inversion in ischemia
             if ischemia_level > 0.3:
-                inversion_factor = min(1.0, (ischemia_level - 0.3) / 0.5)
-                # Reduce T amplitude, potentially invert
-                t_ischemia_mod = -2.0 * t_amplitude * inversion_factor
-                lead_ii += EcgSynthesizerV2._gaussian(
-                    t, t_t_peak, sigma=t_sigma, amplitude=t_ischemia_mod
-                )
+                inv = min(1.0, (ischemia_level - 0.3) / 0.5)
+                y += _g(t, t_t_peak, sigma=t_sigma, amplitude=-2.0 * ty_amp * inv)
+                z += _g(t, t_t_peak, sigma=t_sigma, amplitude=-2.0 * tz_amp * inv)
+                x += _g(t, t_t_peak, sigma=t_sigma, amplitude=-2.0 * tx_amp * inv)
 
-        return EcgSynthesizerV2._normalize_lead(lead_ii)
+        # --- Normalize: scale Y so R-peak ≈ _MV_SCALE ---
+        y, scale = EcgSynthesizerV2._normalize_vcg_primary(y)
+        x *= scale
+        z *= scale
+
+        return _VcgComponents(x=x, y=y, z=z)
+
+    # ------------------------------------------------------------------
+    # VT VCG
+    # ------------------------------------------------------------------
 
     @staticmethod
-    def _build_vt_morphology(
+    def _build_vt_vcg(
         t: NDArray[np.float64],
         n: int,
         conduction: ConductionResult,
-    ) -> NDArray[np.float64]:
-        """VT morphology: wide bizarre QRS, no P-wave, inverted T-wave.
+    ) -> _VcgComponents:
+        """VT morphology: wide bizarre QRS in all 3 VCG components."""
+        _g = EcgSynthesizerV2._gaussian
+        x = np.zeros(n, dtype=np.float64)
+        y = np.zeros(n, dtype=np.float64)
+        z = np.zeros(n, dtype=np.float64)
 
-        VT originates from a ventricular ectopic focus (purkinje node at t=0).
-        The depolarization spreads slowly through the myocardium (not via the
-        fast His-Purkinje system), producing a wide, slurred QRS complex.
-        """
-        lead_ii = np.zeros(n, dtype=np.float64)
-
-        # VT QRS is anchored to purkinje activation (typically 0ms = beat start)
         act_times = {k: v / 1000.0 for k, v in conduction.activation_times.items()}
-        apds = {
-            k: ap.apd_ms / 1000.0
-            for k, ap in conduction.node_aps.items()
-        }
+        t_qrs = act_times['purkinje'] + 0.040
 
-        # QRS center: use purkinje activation + small offset so QRS isn't
-        # right at the edge of the buffer
-        t_qrs = act_times['purkinje'] + 0.040  # 40ms into the beat
+        # --- Y component (≈ Lead II) — wide positive QRS ---
+        y += _g(t, t_qrs - 0.015, sigma=0.012, amplitude=-0.15)
+        y += _g(t, t_qrs + 0.010, sigma=0.018, amplitude=1.00)
+        y += _g(t, t_qrs + 0.045, sigma=0.015, amplitude=0.40)
+        y += _g(t, t_qrs + 0.080, sigma=0.020, amplitude=-0.30)
 
-        # Wide bizarre QRS (~120-200ms): slow myocardial spread
-        # Dominant R-wave (positive or negative depending on VT axis)
-        # Using RBBB-like pattern: wide positive deflection with notch
-        lead_ii += EcgSynthesizerV2._gaussian(t, t_qrs - 0.015, sigma=0.012, amplitude=-0.15)
-        # Main wide R-wave
-        lead_ii += EcgSynthesizerV2._gaussian(t, t_qrs + 0.010, sigma=0.018, amplitude=1.00)
-        # Secondary R' notch (characteristic VT notching)
-        lead_ii += EcgSynthesizerV2._gaussian(t, t_qrs + 0.045, sigma=0.015, amplitude=0.40)
-        # Broad S-wave
-        lead_ii += EcgSynthesizerV2._gaussian(t, t_qrs + 0.080, sigma=0.020, amplitude=-0.30)
+        # --- X component — VT axis deviation (wide, bizarre) ---
+        x += _g(t, t_qrs - 0.010, sigma=0.014, amplitude=-0.30)
+        x += _g(t, t_qrs + 0.015, sigma=0.020, amplitude=0.60)
+        x += _g(t, t_qrs + 0.055, sigma=0.018, amplitude=0.25)
+        x += _g(t, t_qrs + 0.085, sigma=0.015, amplitude=-0.15)
 
-        # --- Inverted T-wave (discordant with QRS direction) ---
-        # VT T-wave is opposite polarity to QRS, broad and inverted
-        t_t = t_qrs + 0.180  # T-wave starts after wide QRS
-        lead_ii += EcgSynthesizerV2._gaussian(t, t_t, sigma=0.060, amplitude=-0.30)
-        lead_ii += EcgSynthesizerV2._gaussian(t, t_t + 0.060, sigma=0.050, amplitude=-0.10)
+        # --- Z component — dominant anterior forces in VT ---
+        z += _g(t, t_qrs - 0.008, sigma=0.012, amplitude=0.40)
+        z += _g(t, t_qrs + 0.012, sigma=0.022, amplitude=0.70)
+        z += _g(t, t_qrs + 0.050, sigma=0.018, amplitude=-0.20)
+        z += _g(t, t_qrs + 0.080, sigma=0.015, amplitude=-0.35)
 
-        # No P-wave (ventricle drives rhythm, atria dissociated)
+        # --- Discordant T-waves (opposite QRS) ---
+        t_t = t_qrs + 0.180
+        y += _g(t, t_t, sigma=0.060, amplitude=-0.30)
+        y += _g(t, t_t + 0.060, sigma=0.050, amplitude=-0.10)
+        x += _g(t, t_t, sigma=0.055, amplitude=0.15)
+        x += _g(t, t_t + 0.050, sigma=0.045, amplitude=0.05)
+        z += _g(t, t_t, sigma=0.060, amplitude=-0.20)
+        z += _g(t, t_t + 0.060, sigma=0.050, amplitude=0.10)
 
-        return EcgSynthesizerV2._normalize_lead(lead_ii)
+        y, scale = EcgSynthesizerV2._normalize_vcg_primary(y)
+        x *= scale
+        z *= scale
+
+        return _VcgComponents(x=x, y=y, z=z)
+
+    # ------------------------------------------------------------------
+    # PVC VCG
+    # ------------------------------------------------------------------
 
     @staticmethod
-    def _build_pvc_morphology(
+    def _build_pvc_vcg(
         t: NDArray[np.float64],
         n: int,
         conduction: ConductionResult,
-    ) -> NDArray[np.float64]:
-        """PVC morphology: wide QRS, discordant T-wave, may have preceding P-wave."""
-        lead_ii = np.zeros(n, dtype=np.float64)
+    ) -> _VcgComponents:
+        """PVC morphology: wide QRS, discordant T, optional P-wave."""
+        _g = EcgSynthesizerV2._gaussian
+        x = np.zeros(n, dtype=np.float64)
+        y = np.zeros(n, dtype=np.float64)
+        z = np.zeros(n, dtype=np.float64)
 
         act_times = {k: v / 1000.0 for k, v in conduction.activation_times.items()}
-        apds = {
-            k: ap.apd_ms / 1000.0
-            for k, ap in conduction.node_aps.items()
-        }
 
-        # P-wave may be present (sinus rhythm continues, PVC interrupts)
+        # P-wave (if present)
         if conduction.p_wave_present:
             t_p = act_times['sa']
-            lead_ii += EcgSynthesizerV2._gaussian(t, t_p, sigma=0.040, amplitude=0.12)
+            x += _g(t, t_p, sigma=0.040, amplitude=0.08)
+            y += _g(t, t_p, sigma=0.040, amplitude=0.12)
+            z += _g(t, t_p, sigma=0.030, amplitude=0.06)
+            z += _g(t, t_p + 0.060, sigma=0.025, amplitude=-0.04)
 
-        # PVC QRS: anchored to purkinje (ectopic) activation
         t_qrs = act_times['purkinje'] + 0.020
 
-        # Wide QRS (~120-160ms)
-        lead_ii += EcgSynthesizerV2._gaussian(t, t_qrs - 0.010, sigma=0.010, amplitude=-0.12)
-        # Tall wide R
-        lead_ii += EcgSynthesizerV2._gaussian(t, t_qrs + 0.010, sigma=0.015, amplitude=1.10)
-        # Broad S
-        lead_ii += EcgSynthesizerV2._gaussian(t, t_qrs + 0.050, sigma=0.018, amplitude=-0.25)
+        # --- Y: wide QRS ---
+        y += _g(t, t_qrs - 0.010, sigma=0.010, amplitude=-0.12)
+        y += _g(t, t_qrs + 0.010, sigma=0.015, amplitude=1.10)
+        y += _g(t, t_qrs + 0.050, sigma=0.018, amplitude=-0.25)
 
-        # Inverted T-wave (discordant)
+        # --- X: PVC axis deviation ---
+        x += _g(t, t_qrs - 0.008, sigma=0.012, amplitude=-0.20)
+        x += _g(t, t_qrs + 0.012, sigma=0.016, amplitude=0.55)
+        x += _g(t, t_qrs + 0.048, sigma=0.015, amplitude=-0.15)
+
+        # --- Z: anterior-posterior wide QRS ---
+        z += _g(t, t_qrs - 0.005, sigma=0.010, amplitude=0.35)
+        z += _g(t, t_qrs + 0.010, sigma=0.018, amplitude=0.50)
+        z += _g(t, t_qrs + 0.045, sigma=0.016, amplitude=-0.30)
+
+        # Discordant T-wave
         t_t = t_qrs + 0.140
-        lead_ii += EcgSynthesizerV2._gaussian(t, t_t, sigma=0.055, amplitude=-0.25)
-        lead_ii += EcgSynthesizerV2._gaussian(t, t_t + 0.050, sigma=0.040, amplitude=-0.08)
+        y += _g(t, t_t, sigma=0.055, amplitude=-0.25)
+        y += _g(t, t_t + 0.050, sigma=0.040, amplitude=-0.08)
+        x += _g(t, t_t, sigma=0.050, amplitude=0.12)
+        z += _g(t, t_t, sigma=0.055, amplitude=-0.15)
+        z += _g(t, t_t + 0.050, sigma=0.040, amplitude=0.08)
 
-        return EcgSynthesizerV2._normalize_lead(lead_ii)
+        y, scale = EcgSynthesizerV2._normalize_vcg_primary(y)
+        x *= scale
+        z *= scale
+
+        return _VcgComponents(x=x, y=y, z=z)
+
+    # ------------------------------------------------------------------
+    # VF VCG
+    # ------------------------------------------------------------------
 
     @staticmethod
-    def _build_vf_morphology(
+    def _build_vf_vcg(
         t: NDArray[np.float64],
         n: int,
-    ) -> NDArray[np.float64]:
-        """VF morphology: chaotic irregular oscillation, no identifiable waves."""
+    ) -> _VcgComponents:
+        """VF: independent chaotic signals per component."""
         rng = np.random.default_rng()
-        # Chaotic oscillation: sum of random-frequency sinusoids
-        vf = np.zeros(n, dtype=np.float64)
-        for _ in range(8):
-            freq = rng.uniform(2.0, 8.0)  # 2-8 Hz
-            phase = rng.uniform(0, 2 * np.pi)
-            amp = rng.uniform(0.1, 0.4)
-            vf += amp * np.sin(2 * np.pi * freq * t + phase)
-        # Add noise
-        vf += rng.normal(0, 0.05, n)
-        # Amplitude modulation (waxing/waning)
-        envelope = 0.5 + 0.5 * np.sin(2 * np.pi * 0.5 * t)
-        vf *= envelope
-        # Scale to realistic amplitude
-        peak = np.max(np.abs(vf))
-        if peak > 1e-10:
-            vf = vf / peak
-        vf *= _MV_SCALE * 0.6  # VF is lower amplitude than normal QRS
-        return vf
+        components = []
+        for _ in range(3):
+            vf = np.zeros(n, dtype=np.float64)
+            for _ in range(8):
+                freq = rng.uniform(2.0, 8.0)
+                phase = rng.uniform(0, 2 * np.pi)
+                amp = rng.uniform(0.1, 0.4)
+                vf += amp * np.sin(2 * np.pi * freq * t + phase)
+            vf += rng.normal(0, 0.05, n)
+            envelope = 0.5 + 0.5 * np.sin(2 * np.pi * 0.5 * t + rng.uniform(0, np.pi))
+            vf *= envelope
+            peak = np.max(np.abs(vf))
+            if peak > 1e-10:
+                vf = vf / peak
+            vf *= _MV_SCALE * 0.6
+            components.append(vf)
+
+        return _VcgComponents(x=components[0], y=components[1], z=components[2])
+
+    # ------------------------------------------------------------------
+    # VCG → 12-lead projection
+    # ------------------------------------------------------------------
 
     @staticmethod
-    def _normalize_lead(lead_ii: NDArray[np.float64]) -> NDArray[np.float64]:
-        """Normalize lead signal: remove DC offset and scale to realistic amplitude."""
-        # Subtract DC offset so signal oscillates around zero
-        baseline = np.percentile(lead_ii, 5)
-        lead_ii = lead_ii - baseline
+    def _project_vcg_to_leads(
+        vcg: _VcgComponents,
+        requested: list[str],
+    ) -> dict[str, NDArray[np.float64]]:
+        """Project VCG (X, Y, Z) to requested 12 standard leads.
 
-        # Scale to realistic amplitude
-        peak = np.max(np.abs(lead_ii))
-        if peak > 1e-10:
-            lead_ii = lead_ii / peak  # Normalize to [-1, 1]
-        lead_ii *= _MV_SCALE  # Scale so R-peak ≈ 1.0-1.8 mV
+        Lead III is computed as II - I to guarantee Einthoven exactly.
+        Augmented leads derived from I/II/III (Goldberger definitions).
+        """
+        need = set(requested)
+        result: dict[str, NDArray[np.float64]] = {}
 
-        return lead_ii
+        # Stack VCG as (3, N) matrix for vectorised projection
+        vcg_mat = np.vstack([vcg.x, vcg.y, vcg.z])  # shape (3, N)
 
-    def _compute_t_wave_overflow(
+        # Project all Dower leads at once: (8, 3) @ (3, N) = (8, N)
+        projected = _DOWER_INV @ vcg_mat  # (8, N)
+
+        # Build lookup
+        dower_leads: dict[str, NDArray[np.float64]] = {}
+        for i, name in enumerate(_DOWER_LEAD_NAMES):
+            dower_leads[name] = projected[i]
+
+        lead_i = dower_leads['I']
+        lead_ii = dower_leads['II']
+        # Einthoven guarantee: III = II - I
+        lead_iii = lead_ii - lead_i
+
+        if 'I' in need:
+            result['I'] = lead_i
+        if 'II' in need:
+            result['II'] = lead_ii.copy()
+        if 'III' in need:
+            result['III'] = lead_iii
+
+        # Augmented leads (Goldberger definitions)
+        if 'aVR' in need:
+            result['aVR'] = -(lead_i + lead_ii) / 2.0
+        if 'aVL' in need:
+            result['aVL'] = (lead_i - lead_iii) / 2.0
+        if 'aVF' in need:
+            result['aVF'] = (lead_ii + lead_iii) / 2.0
+
+        # Precordial leads from Dower projection
+        for v_lead in ('V1', 'V2', 'V3', 'V4', 'V5', 'V6'):
+            if v_lead in need:
+                result[v_lead] = dower_leads[v_lead]
+
+        return result
+
+    # ------------------------------------------------------------------
+    # T-wave overflow (P-on-T fusion) — VCG version
+    # ------------------------------------------------------------------
+
+    def _compute_t_wave_overflow_vcg(
         self,
         conduction: ConductionResult,
         modifiers: Modifiers | None = None,
-    ) -> NDArray[np.float64] | None:
-        """Compute T-wave tail that extends beyond the current beat boundary.
+    ) -> None:
+        """Compute T-wave tail overflow for all 3 VCG components.
 
-        At high HR, the T-wave peak is clamped within the beat, but the
-        Gaussian tail would naturally extend into the next beat.  We
-        compute this overflow and return it so synthesize() can add it
-        to the beginning of the next beat (P-on-T fusion).
+        At high HR, the T-wave extends beyond beat boundary.
+        Store overflow per component for next beat's P-on-T fusion.
         """
         if conduction.beat_kind not in ('sinus', 'svt', 'af'):
-            return None
+            self._t_wave_carryover_x = None
+            self._t_wave_carryover_y = None
+            self._t_wave_carryover_z = None
+            return
 
         sr = _CELL_RATE
         rr_sec = conduction.rr_sec
@@ -440,33 +555,74 @@ class EcgSynthesizerV2:
             t_t_start = act_times.get('purkinje', 0.0) + apds.get('purkinje', 0.3)
             t_t_peak = t_t_start + 0.110
 
-        # Only generate overflow if T-wave tail extends beyond beat
         t_tail_center = t_t_peak + 0.080
         if t_tail_center <= rr_sec + 0.020:
-            return None
+            self._t_wave_carryover_x = None
+            self._t_wave_carryover_y = None
+            self._t_wave_carryover_z = None
+            return
 
-        # Generate the overflow portion (up to 150ms into the next beat)
         overflow_dur = min(0.150, t_tail_center - rr_sec + 0.100)
         n_overflow = int(overflow_dur * sr)
         if n_overflow < 5:
-            return None
+            self._t_wave_carryover_x = None
+            self._t_wave_carryover_y = None
+            self._t_wave_carryover_z = None
+            return
 
-        # Time array relative to beat boundary (t=0 is next beat start)
         t_overflow = np.arange(n_overflow, dtype=np.float64) / sr
-
-        # The T-wave Gaussian extends: center is at (t_t_peak - rr_sec) relative to next beat start
         t_peak_rel = t_t_peak - rr_sec
         t_tail_rel = t_tail_center - rr_sec
+        _g = self._gaussian
 
-        overflow = np.zeros(n_overflow, dtype=np.float64)
-        overflow += self._gaussian(t_overflow, t_peak_rel, sigma=0.045, amplitude=0.25)
-        overflow += self._gaussian(t_overflow, t_tail_rel, sigma=0.040, amplitude=0.10)
+        # Y component (primary, like old Lead II overflow)
+        oy = np.zeros(n_overflow, dtype=np.float64)
+        oy += _g(t_overflow, t_peak_rel, sigma=0.045, amplitude=0.25)
+        oy += _g(t_overflow, t_tail_rel, sigma=0.040, amplitude=0.10)
+        oy *= _MV_SCALE * 0.4
 
-        # Scale to match the normalized signal level
-        overflow *= _MV_SCALE * 0.4  # Attenuate slightly — P-on-T is partial
-        return overflow
+        # X component (scaled)
+        ox = np.zeros(n_overflow, dtype=np.float64)
+        ox += _g(t_overflow, t_peak_rel, sigma=0.045, amplitude=0.15)
+        ox += _g(t_overflow, t_tail_rel, sigma=0.040, amplitude=0.06)
+        ox *= _MV_SCALE * 0.4
 
-        return lead_ii
+        # Z component (negative, T in Z is typically negative for sinus)
+        oz = np.zeros(n_overflow, dtype=np.float64)
+        oz += _g(t_overflow, t_peak_rel, sigma=0.045, amplitude=-0.10)
+        oz += _g(t_overflow, t_tail_rel, sigma=0.040, amplitude=-0.04)
+        oz *= _MV_SCALE * 0.4
+
+        self._t_wave_carryover_x = ox
+        self._t_wave_carryover_y = oy
+        self._t_wave_carryover_z = oz
+
+    # ------------------------------------------------------------------
+    # Normalisation
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _normalize_vcg_primary(
+        y_comp: NDArray[np.float64],
+    ) -> tuple[NDArray[np.float64], float]:
+        """Normalize Y component (primary) and return scale factor.
+
+        Returns (normalized_y, scale) so X and Z can be scaled consistently.
+        """
+        baseline = np.percentile(y_comp, 5)
+        y_comp = y_comp - baseline
+
+        peak = np.max(np.abs(y_comp))
+        if peak > 1e-10:
+            scale = _MV_SCALE / peak
+        else:
+            scale = 1.0
+
+        return y_comp * scale, scale
+
+    # ------------------------------------------------------------------
+    # Utility helpers
+    # ------------------------------------------------------------------
 
     @staticmethod
     def _gaussian(
@@ -475,56 +631,8 @@ class EcgSynthesizerV2:
         sigma: float,
         amplitude: float,
     ) -> NDArray[np.float64]:
-        """Gaussian basis function for ECG morphology.
-
-        Args:
-            t: Time array (seconds)
-            center: Center of Gaussian (seconds)
-            sigma: Standard deviation (seconds)
-            amplitude: Peak amplitude
-        """
+        """Gaussian basis function for ECG morphology."""
         return amplitude * np.exp(-((t - center) ** 2) / (2 * sigma ** 2))
-
-    @staticmethod
-    def _derive_leads(
-        lead_ii: NDArray[np.float64],
-        requested: list[str],
-    ) -> dict[str, NDArray[np.float64]]:
-        """Derive all requested leads from Lead II.
-
-        Einthoven compliance: Lead I = alpha * Lead II,
-        Lead III = Lead II - Lead I  => I + III = II exactly.
-        Augmented leads from Einthoven definition.
-        V-leads scaled from Lead II with morphology coefficients.
-        """
-        result: dict[str, NDArray[np.float64]] = {}
-        need = set(requested)
-
-        # Always compute Lead I and Lead III if any limb lead is needed
-        lead_i = _LEAD_I_FRACTION * lead_ii
-        lead_iii = lead_ii - lead_i  # guarantees II = I + III
-
-        if 'I' in need:
-            result['I'] = lead_i
-        if 'II' in need:
-            result['II'] = lead_ii.copy()
-        if 'III' in need:
-            result['III'] = lead_iii
-
-        # Augmented leads (Goldberger definitions)
-        if 'aVR' in need:
-            result['aVR'] = -(lead_i + lead_ii) / 2.0
-        if 'aVL' in need:
-            result['aVL'] = (lead_i - lead_iii) / 2.0
-        if 'aVF' in need:
-            result['aVF'] = (lead_ii + lead_iii) / 2.0
-
-        # Precordial leads
-        for v_lead, coeff in _V_LEAD_COEFFICIENTS.items():
-            if v_lead in need:
-                result[v_lead] = coeff * lead_ii
-
-        return result
 
     def _downsample(
         self,
@@ -535,8 +643,6 @@ class EcgSynthesizerV2:
         if len(signal) <= 1 or target_len <= 1:
             return np.zeros(max(target_len, 1), dtype=np.float64)
 
-        # Use rational resampling: target_len / len(signal)
-        # resample_poly(signal, up, down) where up/down = target_len/len(signal)
         from math import gcd
 
         up = target_len
@@ -546,7 +652,6 @@ class EcgSynthesizerV2:
         down //= g
 
         resampled = resample_poly(signal, up, down)
-        # Trim or pad to exact target_len
         if len(resampled) >= target_len:
             return resampled[:target_len].astype(np.float64)
         else:

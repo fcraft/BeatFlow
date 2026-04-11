@@ -52,10 +52,14 @@ function drawAnnotationOverlay(ctx: CanvasRenderingContext2D, w: number, h: numb
 
 const smoothingLevel = computed(() => store.ecgSmoothingLevel)
 
+/** 根据屏幕宽度计算显示秒数：手机 2.5s，平板 3.5s，桌面 5s */
+const screenW = typeof window !== 'undefined' ? window.innerWidth : 1024
+const dispSec = screenW < 768 ? 2.5 : screenW < 1024 ? 3.5 : 5
+
 const { appendSamples, start, stop } = useScrollingCanvas({
   canvasRef,
   sampleRate: 500,
-  displaySeconds: 5,
+  displaySeconds: dispSec,
   lineColor: '#34C759',
   backgroundColor: '#060608',
   gridColor: 'rgba(255,255,255,0.03)',
@@ -70,7 +74,7 @@ function onEcgChunk(chunk: SignalChunk) { appendSamples(chunk) }
 const overlayCanvasRef = ref<HTMLCanvasElement | null>(null)
 const caliper = useEcgCaliper({
   canvasWidth: () => canvasRef.value?.clientWidth || 800,
-  displaySeconds: 5,
+  displaySeconds: dispSec,
   sampleRate: 500,
 })
 

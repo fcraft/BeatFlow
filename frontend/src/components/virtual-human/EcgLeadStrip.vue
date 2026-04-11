@@ -23,10 +23,14 @@ const leadColor = isLimb ? '#22c55e' : '#3b82f6' // green vs blue
 
 const smoothingLevel = computed(() => store.ecgSmoothingLevel)
 
+/** 根据屏幕宽度计算显示秒数 */
+const screenW = typeof window !== 'undefined' ? window.innerWidth : 1024
+const dispSec = screenW < 768 ? 2.5 : screenW < 1024 ? 3.5 : 5
+
 const { appendSamples, start, stop } = useScrollingCanvas({
   canvasRef,
   sampleRate: 500,
-  displaySeconds: 5,
+  displaySeconds: dispSec,
   lineColor: leadColor,
   label: props.leadName,
   playbackDelayMs: 180,

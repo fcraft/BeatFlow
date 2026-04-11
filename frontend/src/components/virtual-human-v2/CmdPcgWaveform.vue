@@ -13,10 +13,14 @@ import type { SignalChunk } from '@/store/virtualHuman'
 const store = useVirtualHumanStore()
 const canvasRef = ref<HTMLCanvasElement | null>(null)
 
+/** 根据屏幕宽度计算显示秒数：手机 2.5s，平板 3.5s，桌面 5s */
+const screenW = typeof window !== 'undefined' ? window.innerWidth : 1024
+const dispSec = screenW < 768 ? 2.5 : screenW < 1024 ? 3.5 : 5
+
 const { appendSamples, start: startCanvas, stop: stopCanvas } = useScrollingCanvas({
   canvasRef,
   sampleRate: 4000,
-  displaySeconds: 5,
+  displaySeconds: dispSec,
   lineColor: '#FF9500',
   backgroundColor: '#060608',
   gridColor: 'rgba(255,255,255,0.03)',

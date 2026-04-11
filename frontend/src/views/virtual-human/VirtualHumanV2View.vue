@@ -2,11 +2,16 @@
 /**
  * Virtual Human V2 — Command Center 指挥中心式布局
  *
- * 布局:
- *   StatusBar (40px 极简状态条)
- *   MainContent: 左 WaveflowPanel (75%) | 右 VitalsSidebar (25%)
- *   TimelineTrack (36px 底部时间线)
- *   ControlOverlay (全屏毛玻璃 Overlay，按需打开)
+ * 桌面布局:
+ *   StatusBar (40px)
+ *   MainContent: 左 WaveflowPanel | 右 VitalsSidebar (200px)
+ *   TimelineTrack (36px)
+ *
+ * 移动端布局 (< 768px):
+ *   StatusBar (44px, 精简)
+ *   WaveflowPanel (全宽, 波形限高)
+ *   MobileVitalsBar (底部水平滚动条)
+ *   控制面板 → 底部 Sheet
  */
 import { ref, onMounted, onUnmounted, onBeforeUnmount, reactive, toRef } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
@@ -27,6 +32,7 @@ import CmdWaveflowPanel from '@/components/virtual-human-v2/CmdWaveflowPanel.vue
 import CmdVitalsSidebar from '@/components/virtual-human-v2/CmdVitalsSidebar.vue'
 import CmdTimelineTrack from '@/components/virtual-human-v2/CmdTimelineTrack.vue'
 import CmdControlOverlay from '@/components/virtual-human-v2/CmdControlOverlay.vue'
+import CmdMobileVitals from '@/components/virtual-human-v2/CmdMobileVitals.vue'
 import PvLoopChart from '@/components/virtual-human/PvLoopChart.vue'
 import ActionPotentialChart from '@/components/virtual-human/ActionPotentialChart.vue'
 import CardiacCycleChart from '@/components/virtual-human/CardiacCycleChart.vue'
@@ -97,16 +103,16 @@ onUnmounted(() => {
        style="background: var(--cmd-bg-gradient); color: var(--cmd-text-primary);
               font-family: var(--cmd-font-body)">
 
-    <!-- Background ambient glow -->
-    <div class="vhv2-glow vhv2-glow--1" />
-    <div class="vhv2-glow vhv2-glow--2" />
+    <!-- Background ambient glow (hidden on mobile for perf) -->
+    <div class="vhv2-glow vhv2-glow--1 cmd-desktop-only" />
+    <div class="vhv2-glow vhv2-glow--2 cmd-desktop-only" />
 
     <!-- Status Bar -->
     <CmdStatusBar @open-nav="toggleNavMenu" />
 
-    <!-- Main Content: left-right split -->
+    <!-- Main Content -->
     <div class="flex-1 flex min-h-0">
-      <!-- LEFT: Waveform flow (not connected → profile selector) -->
+      <!-- LEFT: Waveform flow -->
       <div class="flex-1 min-w-0">
         <CmdProfileSelector v-if="!store.connected && !store.connecting" />
         <div v-else-if="store.connecting" class="flex-1 flex items-center justify-center h-full">
@@ -120,21 +126,25 @@ onUnmounted(() => {
           @toggle-wiggers="showCcChart = !showCcChart" />
       </div>
 
-      <!-- RIGHT: Vitals sidebar (only when connected) -->
-      <CmdVitalsSidebar v-if="store.connected"
+      <!-- RIGHT: Vitals sidebar — desktop only -->
+      <CmdVitalsSidebar v-if="store.connected" class="cmd-desktop-only"
         @open-controls="showControlOverlay = true" />
     </div>
 
-    <!-- Timeline Track -->
-    <CmdTimelineTrack />
+    <!-- Mobile vitals bar — mobile only, replaces sidebar -->
+    <CmdMobileVitals v-if="store.connected" class="cmd-mobile-only"
+      @open-controls="showControlOverlay = true" />
+
+    <!-- Timeline Track (desktop only) -->
+    <CmdTimelineTrack class="cmd-desktop-only" />
 
     <!-- Control Overlay -->
     <CmdControlOverlay v-model:open="showControlOverlay" />
 
-    <!-- Floating physiology panels -->
-    <PvLoopChart v-if="showPvLoop" @close="showPvLoop = false" />
-    <ActionPotentialChart v-if="showApChart" @close="showApChart = false" />
-    <CardiacCycleChart v-if="showCcChart" @close="showCcChart = false" />
+    <!-- Floating physiology panels (desktop only) -->
+    <PvLoopChart v-if="showPvLoop" class="cmd-desktop-only" @close="showPvLoop = false" />
+    <ActionPotentialChart v-if="showApChart" class="cmd-desktop-only" @close="showApChart = false" />
+    <CardiacCycleChart v-if="showCcChart" class="cmd-desktop-only" @close="showCcChart = false" />
 
     <!-- Navigation Menu (Teleport) -->
     <Teleport to="body">
@@ -206,7 +216,6 @@ onUnmounted(() => {
   animation: vhv2-wander-2 55s ease-in-out infinite;
 }
 
-/* Orb 1: wanders across the full viewport */
 @keyframes vhv2-wander-1 {
   0%   { transform: translate(0, 0) scale(1); }
   10%  { transform: translate(30vw, 15vh) scale(1.05); }
@@ -221,7 +230,6 @@ onUnmounted(() => {
   100% { transform: translate(0, 0) scale(1); }
 }
 
-/* Orb 2: opposite wandering path */
 @keyframes vhv2-wander-2 {
   0%   { transform: translate(0, 0) scale(1); }
   12%  { transform: translate(-25vw, -20vh) scale(1.06); }
