@@ -139,6 +139,9 @@ const logout = () => {
 }
 
 onMounted(() => {
+  if (authStore.token && !authStore.user) {
+    authStore.getCurrentUser()
+  }
   notificationStore.fetchUnreadCount()
 })
 </script>

@@ -119,15 +119,14 @@
               />
               <p v-if="pwdError" class="text-xs text-red-500 mt-1">{{ pwdError }}</p>
             </div>
-            <label class="flex items-start gap-2.5 cursor-pointer mt-2">
-              <input v-model="agreed" type="checkbox" class="mt-0.5 accent-primary-600" />
+            <AppCheckbox v-model="agreed" class="mt-2">
               <span class="text-sm text-gray-600">
                 我已阅读并同意
                 <a href="#" class="text-primary-600">服务条款</a>
                 和
                 <a href="#" class="text-primary-600">隐私政策</a>
               </span>
-            </label>
+            </AppCheckbox>
             <div v-if="regError" class="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
               {{ regError }}
             </div>
@@ -151,6 +150,7 @@
 import { ref, reactive, computed, watch, onMounted, nextTick } from 'vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { Eye, EyeOff } from 'lucide-vue-next'
+import AppCheckbox from '@/components/ui/AppCheckbox.vue'
 import { useAuthStore } from '@/store/auth'
 import { useToastStore } from '@/store/toast'
 
@@ -170,7 +170,7 @@ const layout = computed<CardLayout>(() => {
   // 工作台页面：卡片展开为全屏白色背景
   if (['projects', 'project-detail', 'file-viewer', 'sync-viewer',
        'community', 'simulate', 'virtual-human', 'virtual-human-v2',
-       'inbox', 'admin'].includes(name)) return 'fullscreen'
+       'inbox', 'admin', 'component-test'].includes(name)) return 'fullscreen'
   return 'hidden'
 })
 

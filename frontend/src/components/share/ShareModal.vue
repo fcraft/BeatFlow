@@ -68,14 +68,7 @@
 
       <!-- Download limit (optional) -->
       <div>
-        <label class="label flex items-center gap-2">
-          <input 
-            v-model="form.enableDownloadLimit"
-            type="checkbox"
-            class="w-4 h-4 accent-primary-600"
-          />
-          <span>限制下载次数</span>
-        </label>
+        <AppCheckbox v-model="form.enableDownloadLimit" label="限制下载次数" />
         <div v-if="form.enableDownloadLimit" class="mt-2">
           <input 
             v-model.number="form.max_downloads"
@@ -144,6 +137,7 @@
 import { ref, computed, watch } from 'vue'
 import { Copy } from 'lucide-vue-next'
 import AppModal from '@/components/ui/AppModal.vue'
+import AppCheckbox from '@/components/ui/AppCheckbox.vue'
 import { useToastStore } from '@/store/toast'
 import { useAuthStore } from '@/store/auth'
 

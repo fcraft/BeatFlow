@@ -16,10 +16,16 @@
       <div class="flex items-center gap-2 mb-5">
         <input v-model="searchQuery" type="text" placeholder="搜索帖子标题或内容…" class="input flex-1"
           @keydown.enter="fetchPosts(true)" />
-        <button class="btn-secondary btn-sm shrink-0" @click="fetchPosts(true)">
+        <button
+          class="h-[42px] px-4 flex items-center gap-1.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-800 transition-all duration-200 shrink-0"
+          @click="fetchPosts(true)"
+        >
           <Search class="w-3.5 h-3.5" /><span class="hidden sm:inline">搜索</span>
         </button>
-        <button v-if="searchQuery || searchTag" class="btn-ghost btn-sm shrink-0 text-gray-400" @click="searchQuery=''; searchTag=''; fetchPosts(true)">
+        <button v-if="searchQuery || searchTag"
+          class="w-[42px] h-[42px] flex items-center justify-center rounded-xl border border-gray-200 text-gray-400 hover:bg-gray-50 hover:text-gray-600 transition-all duration-200 shrink-0"
+          @click="searchQuery=''; searchTag=''; fetchPosts(true)"
+        >
           <X class="w-3.5 h-3.5" />
         </button>
       </div>

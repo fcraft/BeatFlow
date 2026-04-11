@@ -288,31 +288,13 @@
 
           <!-- 存储类型 -->
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">存储类型</label>
-            <div class="flex gap-4">
-              <label class="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="storage_type"
-                  value="local"
-                  :checked="settingsForm.storage_type === 'local'"
-                  class="text-primary-600"
-                  @change="settingsForm.storage_type = 'local'"
-                />
-                <span class="text-sm text-gray-700">本地存储</span>
-              </label>
-              <label class="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="storage_type"
-                  value="cos"
-                  :checked="settingsForm.storage_type === 'cos'"
-                  class="text-primary-600"
-                  @change="settingsForm.storage_type = 'cos'"
-                />
-                <span class="text-sm text-gray-700">腾讯云 COS (S3 兼容)</span>
-              </label>
-            </div>
+            <label class="label">存储类型</label>
+            <AppSelect
+              v-model="settingsForm.storage_type"
+              :options="storageTypeOptions"
+              class="max-w-xs"
+              block
+            />
           </div>
 
           <!-- COS 配置表单 -->
@@ -366,19 +348,18 @@
         </div>
       </div>
     </div>
-  </AppLayout>
 
-  <!-- ── 帖子详情 Modal ─────────────────────────────────────── -->
-  <AppModal v-model="showAdminPostDetail" :title="adminSelectedPost?.title ?? ''" width="680px">
-    <div v-if="adminSelectedPost" class="space-y-4">
-      <!-- 元信息 -->
-      <div class="flex items-center gap-3 text-sm text-gray-500">
-        <div class="w-7 h-7 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-xs font-semibold">
-          {{ adminSelectedPost.author_username?.[0]?.toUpperCase() ?? '?' }}
-        </div>
-        <span class="font-medium text-gray-700">{{ adminSelectedPost.author_username }}</span>
-        <span>{{ formatDate(adminSelectedPost.created_at) }}</span>
-        <span class="ml-auto flex items-center gap-3 text-xs">
+    <!-- ── 帖子详情 Modal ─────────────────────────────────────── -->
+    <AppModal v-model="showAdminPostDetail" :title="adminSelectedPost?.title ?? ''" width="680px">
+      <div v-if="adminSelectedPost" class="space-y-4">
+        <!-- 元信息 -->
+        <div class="flex items-center gap-3 text-sm text-gray-500">
+          <div class="w-7 h-7 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-xs font-semibold">
+            {{ adminSelectedPost.author_username?.[0]?.toUpperCase() ?? '?' }}
+          </div>
+          <span class="font-medium text-gray-700">{{ adminSelectedPost.author_username }}</span>
+          <span>{{ formatDate(adminSelectedPost.created_at) }}</span>
+          <span class="ml-auto flex items-center gap-3 text-xs">
           <span>👁 {{ adminSelectedPost.view_count }}</span>
           <span>❤ {{ adminSelectedPost.like_count }}</span>
         </span>
@@ -423,8 +404,9 @@
         <button class="text-xs text-red-600 hover:bg-red-50 px-3 py-1.5 rounded transition-colors"
           @click="deletePostFromDetail">删除帖子</button>
       </div>
-    </div>
-  </AppModal>
+      </div>
+    </AppModal>
+  </AppLayout>
 </template>
 
 <script setup lang="ts">
@@ -432,6 +414,7 @@ import { ref, onMounted, defineComponent, h } from 'vue'
 import { RouterLink } from 'vue-router'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import AppModal from '@/components/ui/AppModal.vue'
+import AppSelect from '@/components/ui/AppSelect.vue'
 import { useToastStore } from '@/store/toast'
 
 const toast = useToastStore()
@@ -744,6 +727,11 @@ const settingsForm = ref<SettingsForm>({
   cos_region: '',
   cos_endpoint: '',
 })
+
+const storageTypeOptions = [
+  { value: 'local', label: '本地存储' },
+  { value: 'cos', label: '腾讯云 COS (S3 兼容)' },
+]
 const savingSettings = ref(false)
 const testingStorage = ref(false)
 const storageTestResult = ref<{ success: boolean; message: string } | null>(null)

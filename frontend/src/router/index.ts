@@ -43,6 +43,7 @@ const router = createRouter({
     { path: '/virtual-human', name: 'virtual-human-v2', component: () => import('@/views/virtual-human/VirtualHumanV2View.vue'), meta: { requiresAuth: true } },
     { path: '/inbox', name: 'inbox', component: () => import('@/views/inbox/InboxView.vue'), meta: { requiresAuth: true } },
     { path: '/admin', name: 'admin', component: () => import('@/views/admin/AdminView.vue'), meta: { requiresAuth: true, requiresAdmin: true } },
+    { path: '/dev/components', name: 'component-test', component: () => import('@/views/dev/ComponentTestView.vue'), meta: { requiresAuth: true } },
   ]
 })
 

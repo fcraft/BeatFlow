@@ -12,10 +12,11 @@
           <label class="label">项目描述</label>
           <textarea v-model="form.description" rows="3" class="textarea" :disabled="!permission.isAdmin" />
         </div>
-        <label class="flex items-center gap-2.5 cursor-pointer" :class="{ 'opacity-50 cursor-not-allowed': !permission.isAdmin }">
-          <input v-model="form.is_public" type="checkbox" class="accent-primary-600 w-4 h-4" :disabled="!permission.isAdmin" />
-          <span class="text-sm text-gray-700">{{ form.is_public ? '公开项目（所有人可查看）' : '私有项目（仅成员可查看）' }}</span>
-        </label>
+        <AppCheckbox
+          v-model="form.is_public"
+          :disabled="!permission.isAdmin"
+          :label="form.is_public ? '公开项目（所有人可查看）' : '私有项目（仅成员可查看）'"
+        />
       </div>
       <!-- Save button: only show for admin -->
       <button 
@@ -66,6 +67,7 @@ import { ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { Save, Trash2, AlertTriangle } from 'lucide-vue-next'
 import AppModal from '@/components/ui/AppModal.vue'
+import AppCheckbox from '@/components/ui/AppCheckbox.vue'
 import { useProjectStore } from '@/store/project'
 import { useToastStore } from '@/store/toast'
 import { useProjectPermission } from '@/composables/useProjectPermission'

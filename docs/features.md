@@ -883,11 +883,12 @@ v2 `SimulationPipeline.apply_command()` 仅实现 12/48 个交互命令（25%）
 | 组件 | 路径 | 说明 |
 |------|------|------|
 | `AppLayout` | `components/layout/AppLayout.vue` | 主布局（侧边栏+顶栏+内容区） |
-| `AppToast` | `components/ui/AppToast.vue` | 全局 Toast 通知 |
+| `AppToast` | `components/ui/AppToast.vue` | 全局 Toast 通知（磨砂玻璃暗色质感，左侧彩色条+图标+进度条，支持 action 按钮；桌面端右上角、移动端底部弹出；多条堆叠） |
 | `AppModal` | `components/ui/AppModal.vue` | 通用对话框，v-model 控制显示 |
 | `BpmPanel` | `components/ui/BpmPanel.vue` | 心率数值显示面板 |
 | `DetectionPanel` | `components/ui/DetectionPanel.vue` | 自动检测结果展示 |
-| `ProjectPicker` | `components/ui/ProjectPicker.vue` | 项目选择器（搜索+内联创建新项目，下拉面板通过 Teleport 全局挂载到 body 避免 overflow 裁切） |
+| `ProjectPicker` | `components/ui/ProjectPicker.vue` | 项目选择器（基于 AppSelect，搜索+内联创建新项目，支持暗色模式） |
+| `AppSelect` | `components/ui/AppSelect.vue` | 通用下拉选择器（毛玻璃风格，Teleport 挂载到 body，支持搜索、图标、badge、暗色模式、footer slot） |
 
 ### 项目相关组件
 | 组件 | 说明 |
@@ -915,6 +916,6 @@ v2 `SimulationPipeline.apply_command()` 仅实现 12/48 个交互命令（25%）
 |-------|------|------|
 | `useAuthStore` | `store/auth.ts` | 认证状态（token、user、login/logout） |
 | `useProjectStore` | `store/project.ts` | 项目和文件数据 |
-| `useToastStore` | `store/toast.ts` | Toast 通知队列 |
+| `useToastStore` | `store/toast.ts` | Toast 通知队列（success/error/warning/info），支持 action 按钮和 ToastOptions 配置 |
 | `useNotificationStore` | `store/notification.ts` | 未读通知数量，fetchUnreadCount/markAllRead |
 | `useVirtualHumanStore` | `store/virtualHuman.ts` | 虚拟人体 WebSocket 连接管理、实时 vitals（含药物/电解质/defibrillation_count 字段）、听诊模式状态（区域/降噪）、档案 CRUD、信号回调分发（多订阅者模式）、`derivedActiveStates` 派生活动效果、`activeCountByCategory` 分类计数、`controlPanelTab` 控制面板 Tab 状态、`alarmMuted` 报警静音、`caliperMode` 卡尺测量模式 |

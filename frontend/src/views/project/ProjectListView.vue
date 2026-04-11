@@ -20,12 +20,16 @@
           <input v-model="searchQuery" type="text" placeholder="搜索项目..." class="input pl-9" />
         </div>
         <div class="flex items-center gap-2">
-          <select v-model="filterType" class="select flex-1 sm:w-36">
-            <option value="all">全部项目</option>
-            <option value="public">公开项目</option>
-            <option value="private">私有项目</option>
-          </select>
-          <button class="btn-ghost btn-sm shrink-0" @click="refresh">
+          <AppSelect
+            v-model="filterType"
+            :options="filterOptions"
+            class="flex-1 sm:w-auto"
+            block
+          />
+          <button
+            class="w-[42px] h-[42px] flex items-center justify-center rounded-xl border border-gray-200 text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-all duration-200 shrink-0"
+            @click="refresh"
+          >
             <RefreshCw class="w-4 h-4" :class="{ 'animate-spin': loading }" />
           </button>
         </div>
@@ -101,10 +105,7 @@
           <label class="label">项目描述</label>
           <textarea v-model="form.description" rows="3" placeholder="描述这个项目的用途..." class="textarea" />
         </div>
-        <label class="flex items-center gap-2.5 cursor-pointer">
-          <input v-model="form.is_public" type="checkbox" class="accent-primary-600" />
-          <span class="text-sm text-gray-700">设为公开项目（所有人可查看）</span>
-        </label>
+        <AppCheckbox v-model="form.is_public" label="设为公开项目（所有人可查看）" />
       </div>
       <template #footer>
         <button class="btn-secondary" @click="showCreate = false">取消</button>
@@ -126,10 +127,7 @@
           <label class="label">项目描述</label>
           <textarea v-model="editTarget.description" rows="3" class="textarea" />
         </div>
-        <label class="flex items-center gap-2.5 cursor-pointer">
-          <input v-model="editTarget.is_public" type="checkbox" class="accent-primary-600" />
-          <span class="text-sm text-gray-700">公开项目</span>
-        </label>
+        <AppCheckbox v-model="editTarget.is_public" label="公开项目" />
       </div>
       <template #footer>
         <button class="btn-secondary" @click="showEdit = false">取消</button>
@@ -166,6 +164,8 @@ import { useRouter } from 'vue-router'
 import { Plus, Search, RefreshCw, Eye, Pencil, Trash2, FolderOpen, Calendar, AlertTriangle } from 'lucide-vue-next'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import AppModal from '@/components/ui/AppModal.vue'
+import AppSelect from '@/components/ui/AppSelect.vue'
+import AppCheckbox from '@/components/ui/AppCheckbox.vue'
 import { useProjectStore } from '@/store/project'
 import { useToastStore } from '@/store/toast'
 import type { Project } from '@/types/project'
@@ -180,6 +180,12 @@ const editing = ref(false)
 const deleting = ref(false)
 const searchQuery = ref('')
 const filterType = ref<'all'|'public'|'private'>('all')
+
+const filterOptions = [
+  { value: 'all', label: '全部项目' },
+  { value: 'public', label: '公开项目' },
+  { value: 'private', label: '私有项目' },
+]
 
 const showCreate = ref(false)
 const showEdit = ref(false)
