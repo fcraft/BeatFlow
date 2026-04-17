@@ -8,7 +8,7 @@
       </div>
       <div class="flex items-center gap-2">
         <!-- Upload button: only show for member+ -->
-        <label v-if="permission.canUpload && isDesktop" class="btn-primary btn-sm cursor-pointer">
+        <label v-if="permission.canUpload" class="btn-primary btn-sm cursor-pointer">
           <Upload class="w-3.5 h-3.5" />
           上传文件
           <input
@@ -84,105 +84,60 @@
     </div>
 
     <div v-else-if="filteredFiles.length > 0" class="space-y-2">
-      <template v-for="file in filteredFiles" :key="file.id">
-        <!-- Mobile: SwipeAction + LongPressMenu -->
-        <SwipeAction
-          v-if="isMobile"
-          :actions="[
-            { label: '预览', icon: Eye, color: 'bg-blue-500 text-white', onClick: () => goView(file.id) },
-            { label: '下载', icon: Download, color: 'bg-green-500 text-white', onClick: () => downloadFile(file) },
-            ...(permission.canDelete ? [{ label: '删除', icon: Trash2, color: 'bg-red-500 text-white', onClick: () => removeFile(file) }] : []),
-          ]"
-        >
-          <LongPressMenu
-            :items="[
-              { label: '预览', icon: Eye, onClick: () => goView(file.id) },
-              { label: '下载', icon: Download, onClick: () => downloadFile(file) },
-              ...(permission.canShare ? [{ label: '分享', icon: Share2, onClick: () => openShare(file) }] : []),
-              ...(permission.canDelete ? [{ label: '删除', icon: Trash2, color: 'text-red-500', onClick: () => removeFile(file) }] : []),
-            ]"
-          >
-            <div
-              class="card px-4 py-3 flex items-center gap-4 cursor-pointer"
-              @click="goView(file.id)"
-            >
-              <!-- Icon -->
-              <div class="w-10 h-10 rounded-lg flex items-center justify-center shrink-0"
-                :class="fileIconBg(file.file_type)">
-                <component :is="fileIcon(file.file_type)" class="w-5 h-5" :class="fileIconColor(file.file_type)" />
-              </div>
+      <div
+        v-for="file in filteredFiles"
+        :key="file.id"
+        class="card px-4 py-3 flex items-center gap-4 hover:border-primary-200 hover:shadow-sm transition-all duration-150 cursor-pointer group"
+        @click="goView(file.id)"
+      >
+        <!-- Icon -->
+        <div class="w-10 h-10 rounded-lg flex items-center justify-center shrink-0"
+          :class="fileIconBg(file.file_type)">
+          <component :is="fileIcon(file.file_type)" class="w-5 h-5" :class="fileIconColor(file.file_type)" />
+        </div>
 
-              <!-- Info -->
-              <div class="flex-1 min-w-0">
-                <div class="font-medium text-sm text-gray-900 truncate">{{ file.original_filename || file.filename }}</div>
-                <div class="flex items-center gap-3 mt-0.5 text-xs text-gray-400">
-                  <span>{{ formatSize(file.file_size) }}</span>
-                  <span v-if="file.duration">{{ formatDuration(file.duration) }}</span>
-                  <span>{{ formatDate(file.created_at) }}</span>
-                </div>
-              </div>
-
-              <!-- Type badge -->
-              <span class="shrink-0" :class="fileTypeBadge(file.file_type)">{{ file.file_type.toUpperCase() }}</span>
-            </div>
-          </LongPressMenu>
-        </SwipeAction>
-
-        <!-- Desktop: original card with hover action buttons -->
-        <div
-          v-else
-          class="card px-4 py-3 flex items-center gap-4 hover:border-primary-200 hover:shadow-sm transition-all duration-150 cursor-pointer group"
-          @click="goView(file.id)"
-        >
-          <!-- Icon -->
-          <div class="w-10 h-10 rounded-lg flex items-center justify-center shrink-0"
-            :class="fileIconBg(file.file_type)">
-            <component :is="fileIcon(file.file_type)" class="w-5 h-5" :class="fileIconColor(file.file_type)" />
-          </div>
-
-          <!-- Info -->
-          <div class="flex-1 min-w-0">
-            <div class="font-medium text-sm text-gray-900 truncate">{{ file.original_filename || file.filename }}</div>
-            <div class="flex items-center gap-3 mt-0.5 text-xs text-gray-400">
-              <span>{{ formatSize(file.file_size) }}</span>
-              <span v-if="file.duration">{{ formatDuration(file.duration) }}</span>
-              <span v-if="file.sample_rate">{{ file.sample_rate }} Hz</span>
-              <span>{{ formatDate(file.created_at) }}</span>
-            </div>
-          </div>
-
-          <!-- Type badge -->
-          <span class="shrink-0" :class="fileTypeBadge(file.file_type)">{{ file.file_type.toUpperCase() }}</span>
-
-          <!-- Actions -->
-          <div class="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" @click.stop>
-            <button class="btn-icon btn-sm rounded-md" title="预览" @click="goView(file.id)">
-              <Eye class="w-3.5 h-3.5" />
-            </button>
-            <button class="btn-icon btn-sm rounded-md" title="下载" @click="downloadFile(file)">
-              <Download class="w-3.5 h-3.5" />
-            </button>
-            <!-- Share button: show for member+ -->
-            <button
-              v-if="permission.canShare"
-              class="btn-icon btn-sm rounded-md hover:text-blue-500 hover:bg-blue-50"
-              title="分享"
-              @click="openShare(file)"
-            >
-              <Share2 class="w-3.5 h-3.5" />
-            </button>
-            <!-- Delete button: only show for admin+ -->
-            <button
-              v-if="permission.canDelete"
-              class="btn-icon btn-sm rounded-md hover:text-red-500 hover:bg-red-50"
-              title="删除"
-              @click="removeFile(file)"
-            >
-              <Trash2 class="w-3.5 h-3.5" />
-            </button>
+        <!-- Info -->
+        <div class="flex-1 min-w-0">
+          <div class="font-medium text-sm text-gray-900 truncate">{{ file.original_filename || file.filename }}</div>
+          <div class="flex items-center gap-3 mt-0.5 text-xs text-gray-400">
+            <span>{{ formatSize(file.file_size) }}</span>
+            <span v-if="file.duration">{{ formatDuration(file.duration) }}</span>
+            <span v-if="file.sample_rate">{{ file.sample_rate }} Hz</span>
+            <span>{{ formatDate(file.created_at) }}</span>
           </div>
         </div>
-      </template>
+
+        <!-- Type badge -->
+        <span class="shrink-0" :class="fileTypeBadge(file.file_type)">{{ file.file_type.toUpperCase() }}</span>
+
+        <!-- Actions -->
+        <div class="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" @click.stop>
+          <button class="btn-icon btn-sm rounded-md" title="预览" @click="goView(file.id)">
+            <Eye class="w-3.5 h-3.5" />
+          </button>
+          <button class="btn-icon btn-sm rounded-md" title="下载" @click="downloadFile(file)">
+            <Download class="w-3.5 h-3.5" />
+          </button>
+          <!-- Share button: show for member+ -->
+          <button 
+            v-if="permission.canShare"
+            class="btn-icon btn-sm rounded-md hover:text-blue-500 hover:bg-blue-50" 
+            title="分享" 
+            @click="openShare(file)"
+          >
+            <Share2 class="w-3.5 h-3.5" />
+          </button>
+          <!-- Delete button: only show for admin+ -->
+          <button 
+            v-if="permission.canDelete"
+            class="btn-icon btn-sm rounded-md hover:text-red-500 hover:bg-red-50" 
+            title="删除" 
+            @click="removeFile(file)"
+          >
+            <Trash2 class="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
     </div>
 
     <div v-else class="card flex flex-col items-center justify-center py-16 text-center">
@@ -210,18 +165,12 @@
     </AppModal>
 
     <!-- Share modal -->
-    <ShareModal
+    <ShareModal 
       v-model="showShare"
       :file-id="shareFile?.id"
       :file-name="shareFile?.original_filename"
       @created="onShareCreated"
     />
-
-    <!-- Mobile upload FAB -->
-    <label v-if="permission.canUpload && !isDesktop">
-      <FloatingActionButton :icon="Upload" label="上传文件" @click="() => {}" />
-      <input type="file" class="hidden" multiple accept=".wav,.mp3,.flac,.ogg,.mp4,.avi,.mov,audio/*,video/*" @change="onFileSelect" />
-    </label>
   </div>
 </template>
 
@@ -232,10 +181,6 @@ import { Upload, Filter, Eye, Download, Trash2, FileX, AlertTriangle, Music, Vid
 import AppModal from '@/components/ui/AppModal.vue'
 import AppMiniSelect from '@/components/ui/AppMiniSelect.vue'
 import ShareModal from '@/components/share/ShareModal.vue'
-import { useMobile } from '@/composables/useMobile'
-import SwipeAction from '@/components/ui/SwipeAction.vue'
-import LongPressMenu from '@/components/ui/LongPressMenu.vue'
-import FloatingActionButton from '@/components/ui/FloatingActionButton.vue'
 import { useProjectStore } from '@/store/project'
 import { useToastStore } from '@/store/toast'
 import { useProjectPermission } from '@/composables/useProjectPermission'
@@ -246,7 +191,6 @@ const router = useRouter()
 const projectStore = useProjectStore()
 const toast = useToastStore()
 const permission = useProjectPermission(() => props.projectId)
-const { isMobile, isDesktop } = useMobile()
 
 const loading = ref(false)
 const uploading = ref(false)
