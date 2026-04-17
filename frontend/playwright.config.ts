@@ -1,4 +1,4 @@
-import { defineConfig, devices } from '@playwright/test'
+import { defineConfig } from '@playwright/test'
 
 export default defineConfig({
   testDir: './e2e',
@@ -10,37 +10,14 @@ export default defineConfig({
   use: {
     baseURL: 'https://localhost:3080',
     headless: true,
+    viewport: { width: 1280, height: 900 },
     actionTimeout: 5_000,
     ignoreHTTPSErrors: true,
   },
   projects: [
     {
-      name: 'desktop-chromium',
-      use: {
-        browserName: 'chromium',
-        viewport: { width: 1280, height: 900 },
-      },
-    },
-    {
-      name: 'mobile-iphone-se',
-      use: {
-        ...devices['iPhone SE'],
-        browserName: 'chromium',
-      },
-    },
-    {
-      name: 'mobile-iphone-14',
-      use: {
-        ...devices['iPhone 14'],
-        browserName: 'chromium',
-      },
-    },
-    {
-      name: 'tablet-ipad',
-      use: {
-        ...devices['iPad (gen 7)'],
-        browserName: 'chromium',
-      },
+      name: 'chromium',
+      use: { browserName: 'chromium' },
     },
   ],
 })

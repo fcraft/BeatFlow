@@ -1,6 +1,6 @@
 <template>
   <Teleport to="body">
-    <Transition name="modal" appear>
+    <Transition name="modal" @after-leave="onAfterLeave" appear>
       <div
         v-if="modelValue"
         class="fixed inset-0 z-40 modal-overlay"
@@ -10,7 +10,7 @@
           <div
             class="modal-panel relative bg-white w-full flex flex-col max-h-[92vh]
                    rounded-t-2xl sm:rounded-2xl shadow-2xl"
-            :style="smUp ? { maxWidth: width } : { maxWidth: 'calc(100vw - 2rem)' }"
+            :style="smUp ? { maxWidth: width } : {}"
           >
             <!-- Mobile drag handle -->
             <div class="flex justify-center pt-3 pb-1 sm:hidden shrink-0">
@@ -44,28 +44,32 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import { X } from 'lucide-vue-next'
-import { useMobile } from '@/composables/useMobile'
 
 const props = withDefaults(defineProps<{
   modelValue: boolean
   title?: string
   width?: string
   closeOnBackdrop?: boolean
-  mobileMode?: 'center' | 'bottom-sheet'
-}>(), { closeOnBackdrop: true, width: '480px', mobileMode: 'bottom-sheet' })
+}>(), { closeOnBackdrop: true, width: '480px' })
 
 const emit = defineEmits(['update:modelValue'])
-
-const { isMobile } = useMobile()
-const smUp = computed(() => !isMobile.value)
 
 function handleBackdropClick() {
   if (props.closeOnBackdrop) {
     emit('update:modelValue', false)
   }
 }
+
+function onAfterLeave() {
+  // hook for future cleanup if needed
+}
+
+const smUp = ref(false)
+const check = () => { smUp.value = window.innerWidth >= 640 }
+onMounted(() => { check(); window.addEventListener('resize', check) })
+onUnmounted(() => { window.removeEventListener('resize', check) })
 </script>
 
 <style>

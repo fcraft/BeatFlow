@@ -13,14 +13,10 @@ import AppSelect from '@/components/ui/AppSelect.vue'
 import AppSegment from '@/components/ui/AppSegment.vue'
 import AppMiniSelect from '@/components/ui/AppMiniSelect.vue'
 import AppDropdown from '@/components/ui/AppDropdown.vue'
-import { Download, ChevronDown, FileText, Plus, Pencil, Trash2, Eye } from 'lucide-vue-next'
+import { Download, ChevronDown, FileText } from 'lucide-vue-next'
 import { useToastStore } from '@/store/toast'
 import ProjectPicker from '@/components/ui/ProjectPicker.vue'
 import FilePicker from '@/components/ui/FilePicker.vue'
-import BottomSheet from '@/components/ui/BottomSheet.vue'
-import SwipeAction from '@/components/ui/SwipeAction.vue'
-import LongPressMenu from '@/components/ui/LongPressMenu.vue'
-import FloatingActionButton from '@/components/ui/FloatingActionButton.vue'
 
 const toast = useToastStore()
 
@@ -121,11 +117,6 @@ const miniTypeOptions = [
 // ─── ProjectPicker & FilePicker demo ───
 const pickerProjectId = ref('')
 const pickerFileId = ref('')
-
-// ─── Mobile component demos ───
-const showBottomSheet = ref(false)
-const showBottomSheetTall = ref(false)
-const fabClicked = ref(0)
 </script>
 
 <template>
@@ -420,67 +411,6 @@ const fabClicked = ref(0)
             <input type="text" class="input" value="不可编辑" disabled />
           </div>
         </div>
-      </section>
-
-      <!-- ─── BottomSheet Demo ─── -->
-      <section class="card p-6 mb-6">
-        <h2 class="text-lg font-semibold mb-4">BottomSheet 底部面板</h2>
-        <p class="text-sm text-gray-500 mb-4">移动端从底部滑入的面板，支持拖拽关闭。</p>
-        <div class="flex gap-3">
-          <button class="btn-primary btn-sm" @click="showBottomSheet = true">默认高度</button>
-          <button class="btn-secondary btn-sm" @click="showBottomSheetTall = true">固定 50vh</button>
-        </div>
-        <BottomSheet v-model="showBottomSheet" title="示例面板">
-          <p class="text-sm text-gray-600">这是底部面板的内容区域，支持下拉拖拽关闭。</p>
-        </BottomSheet>
-        <BottomSheet v-model="showBottomSheetTall" title="较高面板" height="50vh">
-          <p class="text-sm text-gray-600">这个面板高度固定为 50vh。</p>
-        </BottomSheet>
-      </section>
-
-      <!-- ─── SwipeAction Demo ─── -->
-      <section class="card p-6 mb-6">
-        <h2 class="text-lg font-semibold mb-4">SwipeAction 左滑操作</h2>
-        <p class="text-sm text-gray-500 mb-4">在移动端左滑列表项以显示操作按钮。需使用触屏设备测试。</p>
-        <div class="space-y-2">
-          <SwipeAction
-            v-for="n in 3"
-            :key="n"
-            :actions="[
-              { label: '编辑', color: 'bg-blue-500 text-white', onClick: () => toast.info(`编辑项目 ${n}`) },
-              { label: '删除', color: 'bg-red-500 text-white', onClick: () => toast.error(`删除项目 ${n}`) },
-            ]"
-          >
-            <div class="card px-4 py-3 flex items-center gap-3">
-              <div class="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center text-gray-400">{{ n }}</div>
-              <span class="text-sm font-medium text-gray-700">列表项 {{ n }} — 左滑试试</span>
-            </div>
-          </SwipeAction>
-        </div>
-      </section>
-
-      <!-- ─── LongPressMenu Demo ─── -->
-      <section class="card p-6 mb-6">
-        <h2 class="text-lg font-semibold mb-4">LongPressMenu 长按菜单</h2>
-        <p class="text-sm text-gray-500 mb-4">移动端长按元素弹出上下文菜单。需使用触屏设备测试。</p>
-        <LongPressMenu
-          :items="[
-            { label: '查看详情', icon: Eye, onClick: () => toast.info('查看详情') },
-            { label: '编辑', icon: Pencil, onClick: () => toast.info('编辑') },
-            { label: '删除', icon: Trash2, color: 'text-red-500', onClick: () => toast.error('删除') },
-          ]"
-        >
-          <div class="card px-4 py-6 text-center cursor-pointer select-none hover:bg-gray-50 transition-colors">
-            <p class="text-sm font-medium text-gray-700">长按此区域 (500ms)</p>
-          </div>
-        </LongPressMenu>
-      </section>
-
-      <!-- ─── FloatingActionButton Demo ─── -->
-      <section class="card p-6 mb-6">
-        <h2 class="text-lg font-semibold mb-4">FloatingActionButton 悬浮按钮</h2>
-        <p class="text-sm text-gray-500 mb-4">仅在移动端/平板显示的悬浮操作按钮。点击次数: {{ fabClicked }}</p>
-        <FloatingActionButton :icon="Plus" label="创建" @click="fabClicked++" />
       </section>
     </div>
   </AppLayout>
