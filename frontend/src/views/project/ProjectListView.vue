@@ -7,7 +7,7 @@
           <h1 class="text-xl font-bold text-gray-900">我的项目</h1>
           <p class="text-sm text-gray-500 mt-0.5">管理您的心音心电数据分析项目</p>
         </div>
-        <button class="btn-primary self-start sm:self-auto" @click="showCreate = true">
+        <button v-if="isDesktop" class="btn-primary self-start sm:self-auto" @click="showCreate = true">
           <Plus class="w-4 h-4" />
           新建项目
         </button>
@@ -50,37 +50,72 @@
       </div>
 
       <div v-else-if="filtered.length > 0" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        <div
-          v-for="p in filtered"
-          :key="p.id"
-          class="card-hover p-5 flex flex-col"
-          @click="goDetail(p.id)"
-        >
-          <div class="flex items-start justify-between mb-2">
-            <h3 class="font-semibold text-gray-900 truncate flex-1 mr-2">{{ p.name }}</h3>
-            <span :class="p.is_public ? 'badge-green' : 'badge-gray'">
-              {{ p.is_public ? '公开' : '私有' }}
-            </span>
-          </div>
-          <p class="text-sm text-gray-500 line-clamp-2 flex-1 mb-4">{{ p.description || '暂无描述' }}</p>
-          <div class="border-t border-gray-100 pt-3 flex items-center justify-between">
-            <span class="text-xs text-gray-400 flex items-center gap-1">
-              <Calendar class="w-3 h-3" />
-              {{ formatDate(p.created_at) }}
-            </span>
-            <div class="flex items-center gap-1" @click.stop>
-              <button class="btn-icon btn-sm rounded-md" title="查看" @click="goDetail(p.id)">
-                <Eye class="w-3.5 h-3.5" />
-              </button>
-              <button class="btn-icon btn-sm rounded-md" title="编辑" @click="startEdit(p)">
-                <Pencil class="w-3.5 h-3.5" />
-              </button>
-              <button class="btn-icon btn-sm rounded-md hover:text-red-500 hover:bg-red-50" title="删除" @click="startDelete(p)">
-                <Trash2 class="w-3.5 h-3.5" />
-              </button>
+        <template v-for="p in filtered" :key="p.id">
+          <!-- Mobile: SwipeAction + LongPressMenu -->
+          <SwipeAction
+            v-if="isMobile"
+            :actions="[
+              { label: '编辑', icon: Pencil, color: 'bg-blue-500 text-white', onClick: () => startEdit(p) },
+              { label: '删除', icon: Trash2, color: 'bg-red-500 text-white', onClick: () => startDelete(p) },
+            ]"
+          >
+            <LongPressMenu
+              :items="[
+                { label: '查看详情', icon: Eye, onClick: () => goDetail(p.id) },
+                { label: '编辑', icon: Pencil, onClick: () => startEdit(p) },
+                { label: '删除', icon: Trash2, color: 'text-red-500', onClick: () => startDelete(p) },
+              ]"
+            >
+              <div class="card-hover p-5 flex flex-col" @click="goDetail(p.id)">
+                <div class="flex items-start justify-between mb-2">
+                  <h3 class="font-semibold text-gray-900 truncate flex-1 mr-2">{{ p.name }}</h3>
+                  <span :class="p.is_public ? 'badge-green' : 'badge-gray'">
+                    {{ p.is_public ? '公开' : '私有' }}
+                  </span>
+                </div>
+                <p class="text-sm text-gray-500 line-clamp-2 flex-1 mb-4">{{ p.description || '暂无描述' }}</p>
+                <div class="border-t border-gray-100 pt-3">
+                  <span class="text-xs text-gray-400 flex items-center gap-1">
+                    <Calendar class="w-3 h-3" />
+                    {{ formatDate(p.created_at) }}
+                  </span>
+                </div>
+              </div>
+            </LongPressMenu>
+          </SwipeAction>
+
+          <!-- Desktop: original card with hover action buttons -->
+          <div
+            v-else
+            class="card-hover p-5 flex flex-col"
+            @click="goDetail(p.id)"
+          >
+            <div class="flex items-start justify-between mb-2">
+              <h3 class="font-semibold text-gray-900 truncate flex-1 mr-2">{{ p.name }}</h3>
+              <span :class="p.is_public ? 'badge-green' : 'badge-gray'">
+                {{ p.is_public ? '公开' : '私有' }}
+              </span>
+            </div>
+            <p class="text-sm text-gray-500 line-clamp-2 flex-1 mb-4">{{ p.description || '暂无描述' }}</p>
+            <div class="border-t border-gray-100 pt-3 flex items-center justify-between">
+              <span class="text-xs text-gray-400 flex items-center gap-1">
+                <Calendar class="w-3 h-3" />
+                {{ formatDate(p.created_at) }}
+              </span>
+              <div class="flex items-center gap-1" @click.stop>
+                <button class="btn-icon btn-sm rounded-md" title="查看" @click="goDetail(p.id)">
+                  <Eye class="w-3.5 h-3.5" />
+                </button>
+                <button class="btn-icon btn-sm rounded-md" title="编辑" @click="startEdit(p)">
+                  <Pencil class="w-3.5 h-3.5" />
+                </button>
+                <button class="btn-icon btn-sm rounded-md hover:text-red-500 hover:bg-red-50" title="删除" @click="startDelete(p)">
+                  <Trash2 class="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        </template>
       </div>
 
       <div v-else class="card flex flex-col items-center justify-center py-20 text-center">
@@ -155,6 +190,8 @@
         </button>
       </template>
     </AppModal>
+
+    <FloatingActionButton v-if="!isDesktop" :icon="Plus" label="新建项目" @click="showCreate = true" />
   </AppLayout>
 </template>
 
@@ -166,6 +203,10 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import AppModal from '@/components/ui/AppModal.vue'
 import AppSelect from '@/components/ui/AppSelect.vue'
 import AppCheckbox from '@/components/ui/AppCheckbox.vue'
+import { useMobile } from '@/composables/useMobile'
+import SwipeAction from '@/components/ui/SwipeAction.vue'
+import LongPressMenu from '@/components/ui/LongPressMenu.vue'
+import FloatingActionButton from '@/components/ui/FloatingActionButton.vue'
 import { useProjectStore } from '@/store/project'
 import { useToastStore } from '@/store/toast'
 import type { Project } from '@/types/project'
@@ -173,6 +214,8 @@ import type { Project } from '@/types/project'
 const router = useRouter()
 const projectStore = useProjectStore()
 const toast = useToastStore()
+
+const { isMobile, isDesktop } = useMobile()
 
 const loading = ref(false)
 const creating = ref(false)

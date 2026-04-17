@@ -12,8 +12,8 @@
       <template v-else-if="file">
         <!-- File header -->
         <div class="card p-5 mb-5 flex items-start gap-4">
-          <div class="w-12 h-12 rounded-xl flex items-center justify-center shrink-0" :class="fileIconBg(file.file_type)">
-            <component :is="fileIcon(file.file_type)" class="w-6 h-6" :class="fileIconColor(file.file_type)" />
+          <div class="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center shrink-0" :class="fileIconBg(file.file_type)">
+            <component :is="fileIcon(file.file_type)" class="w-5 h-5 sm:w-6 sm:h-6" :class="fileIconColor(file.file_type)" />
           </div>
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-3 mb-1">
@@ -32,10 +32,10 @@
               <span class="flex items-center gap-1"><Calendar class="w-3 h-3" />{{ formatDate(file.created_at) }}</span>
             </div>
           </div>
-          <button class="btn-secondary btn-sm shrink-0" @click="download">
+          <button v-if="!isMobile" class="btn-secondary btn-sm shrink-0" @click="download">
             <Download class="w-3.5 h-3.5" />下载
           </button>
-          <button class="btn-ghost btn-sm shrink-0" @click="showShareModal = true" title="分享到社区">
+          <button v-if="!isMobile" class="btn-ghost btn-sm shrink-0" @click="showShareModal = true" title="分享到社区">
             <Share2 class="w-3.5 h-3.5" />分享
           </button>
         </div>
@@ -674,6 +674,25 @@
         </Transition>
       </Teleport>
     </div>
+
+    <!-- Mobile bottom toolbar -->
+    <Teleport to="body">
+      <div
+        v-if="isMobile && file"
+        class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-4 py-3 flex items-center justify-around"
+        :style="{ zIndex: mobileToolbarZIndex }"
+      >
+        <button class="flex flex-col items-center gap-1 text-gray-600" @click="download">
+          <Download class="w-5 h-5" />
+          <span class="text-[10px]">下载</span>
+        </button>
+        <button class="flex flex-col items-center gap-1 text-gray-600" @click="showShareModal = true">
+          <Share2 class="w-5 h-5" />
+          <span class="text-[10px]">分享</span>
+        </button>
+        <div style="height: env(safe-area-inset-bottom, 0px)" />
+      </div>
+    </Teleport>
   </AppLayout>
 </template>
 
@@ -691,13 +710,17 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import AppModal from '@/components/ui/AppModal.vue'
 import DetectionPanel from '@/components/ui/DetectionPanel.vue'
 import BpmPanel from '@/components/ui/BpmPanel.vue'
+import { useMobile } from '@/composables/useMobile'
 import { useToastStore } from '@/store/toast'
+import { nextZIndex } from '@/constants/zIndex'
 
 const route = useRoute()
 const toast = useToastStore()
 const fileId = route.params.id as string
 const token = localStorage.getItem('token')
 const authHeader = { Authorization: `Bearer ${token}` }
+const { isMobile } = useMobile()
+const mobileToolbarZIndex = nextZIndex()
 
 // ── Core data ─────────────────────────────────────────────────────
 const file = ref<any>(null)
