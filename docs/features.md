@@ -943,6 +943,22 @@ v2 `SimulationPipeline.apply_command()` 仅实现 12/48 个交互命令（25%）
 | `AssociationManager.vue` | 文件关联配置 |
 | `ProjectSettings.vue` | 项目设置（名称/描述/公开性） |
 
+### 移动端交互组件
+
+| 组件 | 路径 | 说明 |
+|------|------|------|
+| `BottomSheet` | `src/components/ui/BottomSheet.vue` | 底部滑入面板，替代移动端模态框，支持拖拽关闭 |
+| `SwipeAction` | `src/components/ui/SwipeAction.vue` | 左滑操作栏，包裹列表项露出编辑/删除按钮 |
+| `LongPressMenu` | `src/components/ui/LongPressMenu.vue` | 长按上下文菜单，手指位置弹出操作列表 |
+| `FloatingActionButton` | `src/components/ui/FloatingActionButton.vue` | 移动端悬浮操作按钮 (FAB)，仅非桌面端显示 |
+
+### 移动端 Composables
+
+| Composable | 路径 | 说明 |
+|-----------|------|------|
+| `useMobile` | `src/composables/useMobile.ts` | 响应式断点检测（mobile/tablet/desktop） |
+| `useBottomToolbar` | `src/composables/useBottomToolbar.ts` | 底部工具栏滚动感知显隐控制 |
+
 ### Virtual Human V2 组件（Command Center 布局）
 | 组件 | 路径 | 说明 |
 |------|------|------|
@@ -982,3 +998,18 @@ v2 `SimulationPipeline.apply_command()` 仅实现 12/48 个交互命令（25%）
 | `useToastStore` | `store/toast.ts` | Toast 通知队列（success/error/warning/info），支持 action 按钮和 ToastOptions 配置 |
 | `useNotificationStore` | `store/notification.ts` | 未读通知数量，fetchUnreadCount/markAllRead |
 | `useVirtualHumanStore` | `store/virtualHuman.ts` | 虚拟人体 WebSocket 连接管理、实时 vitals（含药物/电解质/defibrillation_count 字段）、听诊模式状态（区域/降噪）、档案 CRUD、信号回调分发（多订阅者模式）、`derivedActiveStates` 派生活动效果、`activeCountByCategory` 分类计数、`controlPanelTab` 控制面板 Tab 状态、`alarmMuted` 报警静音、`caliperMode` 卡尺测量模式 |
+
+### 移动端 E2E 测试
+
+测试目录: `frontend/e2e/mobile/`
+
+| 测试文件 | 覆盖内容 |
+|---------|---------|
+| `project-list.mobile.spec.ts` | 项目列表移动端布局、FAB、左滑、长按菜单 |
+| `project-detail.mobile.spec.ts` | 项目详情 Tab 滑动切换、文件管理手势 |
+| `file-viewer.mobile.spec.ts` | 文件查看器响应式布局、底部工具栏 |
+
+设备视口配置:
+- iPhone SE (375×667)
+- iPhone 14 (390×844)
+- iPad gen 7 (768×1024)
