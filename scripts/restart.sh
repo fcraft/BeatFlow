@@ -49,11 +49,27 @@ fail()    { echo -e "${RED}[FAIL]${NC}  $*"; }
 header()  { echo -e "\n${BOLD}${CYAN}═══ $* ═══${NC}"; }
 
 port_listening() {
-    ss -tlnp 2>/dev/null | grep -q ":${1}\b" 2>/dev/null
+    lsof -i ":$1" -sTCP:LISTEN 2>/dev/null | grep -q LISTEN
 }
 
 pid_alive() {
     [ -n "$1" ] && kill -0 "$1" 2>/dev/null
+}
+
+# Kill process tree (macOS compatible: find children and kill parent)
+kill_tree() {
+    local ppid="$1"
+    [ -z "$ppid" ] && return
+    # Kill children first, then parent
+    for cpid in $(pgrep -P "$ppid" 2>/dev/null); do
+        kill "$cpid" 2>/dev/null || true
+    done
+    kill "$ppid" 2>/dev/null || true
+}
+
+# Get PIDs listening on a port (macOS: lsof)
+port_pids() {
+    lsof -i ":$1" -sTCP:LISTEN -t 2>/dev/null
 }
 
 # ─── 停止单个服务 ─────────────────────────────────────────────────────────────
@@ -65,20 +81,16 @@ stop_backend() {
         local bpid
         bpid=$(cat "$PID_DIR/backend.pid")
         if pid_alive "$bpid"; then
-            kill "$bpid" 2>/dev/null
-            pkill -P "$bpid" 2>/dev/null || true
+            kill_tree "$bpid"
             ok "Backend 已停止 (PID $bpid)"
         fi
         rm -f "$PID_DIR/backend.pid"
     fi
 
     local pids
-    pids=$(ss -tlnp 2>/dev/null | grep ":${BACKEND_PORT}\b" | grep -oP 'pid=\K[0-9]+' || true)
+    pids=$(port_pids $BACKEND_PORT)
     for p in $pids; do
-        if pid_alive "$p"; then
-            kill "$p" 2>/dev/null || true
-            pkill -P "$p" 2>/dev/null || true
-        fi
+        pid_alive "$p" && kill_tree "$p"
     done
 
     local waited=0
@@ -88,9 +100,8 @@ stop_backend() {
     done
 
     if port_listening $BACKEND_PORT; then
-        warn "Backend 端口 $BACKEND_PORT 仍被占用，尝试强制终止..."
-        pids=$(ss -tlnp 2>/dev/null | grep ":${BACKEND_PORT}\b" | grep -oP 'pid=\K[0-9]+' || true)
-        for p in $pids; do kill -9 "$p" 2>/dev/null || true; done
+        warn "Backend 端口 $BACKEND_PORT 仍被占用，强制终止..."
+        for p in $(port_pids $BACKEND_PORT); do kill -9 "$p" 2>/dev/null || true; done
         sleep 1
     fi
 }
@@ -102,20 +113,16 @@ stop_frontend() {
         local fpid
         fpid=$(cat "$PID_DIR/frontend.pid")
         if pid_alive "$fpid"; then
-            kill "$fpid" 2>/dev/null
-            pkill -P "$fpid" 2>/dev/null || true
+            kill_tree "$fpid"
             ok "Frontend 已停止 (PID $fpid)"
         fi
         rm -f "$PID_DIR/frontend.pid"
     fi
 
     local pids
-    pids=$(ss -tlnp 2>/dev/null | grep ":${FRONTEND_PORT}\b" | grep -oP 'pid=\K[0-9]+' || true)
+    pids=$(port_pids $FRONTEND_PORT)
     for p in $pids; do
-        if pid_alive "$p"; then
-            kill "$p" 2>/dev/null || true
-            pkill -P "$p" 2>/dev/null || true
-        fi
+        pid_alive "$p" && kill_tree "$p"
     done
 
     local waited=0
@@ -125,23 +132,25 @@ stop_frontend() {
     done
 
     if port_listening $FRONTEND_PORT; then
-        warn "Frontend 端口 $FRONTEND_PORT 仍被占用，尝试强制终止..."
-        pids=$(ss -tlnp 2>/dev/null | grep ":${FRONTEND_PORT}\b" | grep -oP 'pid=\K[0-9]+' || true)
-        for p in $pids; do kill -9 "$p" 2>/dev/null || true; done
+        warn "Frontend 端口 $FRONTEND_PORT 仍被占用，强制终止..."
+        for p in $(port_pids $FRONTEND_PORT); do kill -9 "$p" 2>/dev/null || true; done
         sleep 1
     fi
 }
 
 stop_postgres() {
     info "停止 PostgreSQL..."
-    if command -v systemctl &>/dev/null; then
-        if systemctl is-active --quiet postgresql 2>/dev/null; then
-            systemctl stop postgresql 2>/dev/null && ok "PostgreSQL 已通过 systemctl 停止" && return 0
-        fi
+    # macOS: Homebrew services
+    if command -v brew &>/dev/null; then
+        for svc in postgresql@16 postgresql@15 postgresql; do
+            if brew services list 2>/dev/null | grep -q "${svc}.*started"; then
+                brew services stop "$svc" 2>/dev/null && ok "PostgreSQL 已通过 brew 停止 ($svc)" && return 0
+            fi
+        done
     fi
     if command -v docker &>/dev/null; then
         local pg_container="beat-flow-postgres"
-        if docker ps --format '{{.Names}}' | grep -q "^${pg_container}$"; then
+        if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^${pg_container}$"; then
             docker stop "$pg_container" &>/dev/null && ok "PostgreSQL Docker 容器已停止" && return 0
         fi
     fi
@@ -230,14 +239,17 @@ start_postgres() {
         ok "PostgreSQL 已在运行 (port $POSTGRES_PORT)"
         return 0
     fi
-    if command -v systemctl &>/dev/null; then
-        systemctl start postgresql 2>/dev/null && sleep 2
+    # macOS: Homebrew services
+    if command -v brew &>/dev/null; then
+        for svc in postgresql@16 postgresql@15 postgresql; do
+            brew services start "$svc" 2>/dev/null && sleep 2 && break
+        done
     fi
-    if command -v docker &>/dev/null && ! port_listening $POSTGRES_PORT; then
+    if ! port_listening $POSTGRES_PORT && command -v docker &>/dev/null; then
         docker start beat-flow-postgres 2>/dev/null || true
         sleep 3
     fi
-    port_listening $POSTGRES_PORT && ok "PostgreSQL 已启动 (port $POSTGRES_PORT)" || fail "PostgreSQL 启动失败"
+    port_listening $POSTGRES_PORT && ok "PostgreSQL 已启动 (port $POSTGRES_PORT)" || warn "PostgreSQL 未在本地管理 (port $POSTGRES_PORT 未监听)，如外部 PostgreSQL 可用则无碍"
 }
 
 # ─── 重启编排 ─────────────────────────────────────────────────────────────────
