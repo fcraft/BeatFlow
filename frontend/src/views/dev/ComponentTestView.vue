@@ -22,6 +22,8 @@ import type { ContextMenuItem } from '@/components/ui/ContextMenu.vue'
 import ReviewPanel from '@/components/ui/ReviewPanel.vue'
 import { useAnnotationReviewStore } from '@/store/annotationReview'
 import { Zap, Scissors, Trash2, Search } from 'lucide-vue-next'
+import CausalityPanel from '@/components/ui/CausalityPanel.vue'
+import type { CausalEvent } from '@/components/ui/CausalityPanel.vue'
 
 const toast = useToastStore()
 
@@ -153,6 +155,44 @@ function showReviewDemo() {
     { annotation_type: 'murmur', start_time: 1.8, end_time: 2.3, confidence: 0.35, label: '杂音' },
   ], 'demo-file-id', 'neurokit2')
 }
+
+// ─── CausalityPanel mock data ───
+const causalEvents = ref<CausalEvent[]>([])
+
+function makeCausalEvent(id: string, overrides: Partial<CausalEvent> = {}): CausalEvent {
+  return {
+    id, timestamp_ms: Date.now(),
+    source: 'baroreflex', source_detail: 'MAP_change',
+    target: 'heart_rate', target_path: 'vitals.heart_rate',
+    old_value: 72, new_value: 85, delta: 13,
+    mechanism: 'MAP↓ → baroreceptor unloading → sympathetic↑ → HR↑',
+    confidence: 1.0, parent_event_id: null,
+    ...overrides,
+  }
+}
+
+function loadCausalEvents() {
+  const e1 = makeCausalEvent('e1', { source: 'exercise_model', source_detail: 'jog_0.5', target: 'heart_rate', old_value: 72, new_value: 95, delta: 23, mechanism: 'Exercise → sympathetic activation → HR ↑' })
+  const e2 = makeCausalEvent('e2', { parent_event_id: 'e1', source: 'hemodynamics', target: 'cardiac_output', old_value: 5.0, new_value: 7.2, delta: 2.2, mechanism: 'HR↑ → CO = HR × SV → CO ↑' })
+  const e3 = makeCausalEvent('e3', { parent_event_id: 'e1', source: 'hemodynamics', target: 'systolic_bp', old_value: 120, new_value: 135, delta: 15, mechanism: 'CO↑ → aortic flow ↑ → SBP ↑' })
+  const e4 = makeCausalEvent('e4', { parent_event_id: 'e1', source: 'baroreflex', target: 'sympathetic_tone', old_value: 0.5, new_value: 0.35, delta: -0.15, mechanism: 'BP↑ → baroreceptor activation → sympathetic withdrawal' })
+  const e5 = makeCausalEvent('e5', { source: 'pharmacokinetics', source_detail: 'beta_blocker_0.5', target: 'heart_rate', old_value: 95, new_value: 78, delta: -17, mechanism: 'β1 blockade → SA node firing ↓ → HR↓', confidence: 0.92 })
+  causalEvents.value = [e1, e2, e3, e4, e5]
+}
+
+function addCausalEvent() {
+  const sources = ['baroreflex', 'chemoreflex', 'exercise_model', 'pharmacokinetics', 'hemodynamics']
+  const targets = ['heart_rate', 'contractility', 'tpr', 'cardiac_output', 'systolic_bp']
+  const i = causalEvents.value.length
+  causalEvents.value.push(makeCausalEvent(`evt-${i}`, {
+    source: sources[i % sources.length],
+    target: targets[i % targets.length],
+    old_value: 70 + Math.random() * 30,
+    new_value: 70 + Math.random() * 30,
+    delta: Math.random() * 20 - 10,
+  }))
+}
+
 </script>
 
 <template>
@@ -472,6 +512,20 @@ function showReviewDemo() {
           <button class="test-btn test-btn--slate" @click="reviewStore.reset()">重置</button>
         </div>
         <ReviewPanel @accepted="() => toast.success('已接受标注')" @rejected="() => toast.info('已放弃检测结果')" />
+      </section>
+
+      <!-- ─── CausalityPanel ─── -->
+      <section>
+        <h2 class="text-lg font-semibold text-gray-800 mb-1">因果追踪面板 (CausalityPanel)</h2>
+        <p class="text-sm text-gray-500 mb-4">
+          实时显示生理状态变化的因果链 · 点击事件展开机制说明和下游效应
+        </p>
+        <div class="flex gap-3 mb-4 flex-wrap">
+          <button class="test-btn test-btn--blue" @click="loadCausalEvents">加载模拟事件</button>
+          <button class="test-btn test-btn--blue" @click="addCausalEvent">追加事件</button>
+          <button class="test-btn test-btn--slate" @click="causalEvents = []">清空</button>
+        </div>
+        <CausalityPanel :events="causalEvents" :max-visible="6" />
       </section>
     </div>
   </AppLayout>

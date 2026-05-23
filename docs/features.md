@@ -939,6 +939,7 @@ v2 `SimulationPipeline.apply_command()` 仅实现 12/48 个交互命令（25%）
 | `AppSegment` | `components/ui/AppSegment.vue` | 分段选择器（互斥按钮组，支持 xs/sm/md 尺寸，block 撑满模式） |
 | `AppMiniSelect` | `components/ui/AppMiniSelect.vue` | 紧凑原生 select 封装（统一样式 + xs/sm/md 尺寸 + numeric 模式自动转数字） |
 | `AppDropdown` | `components/ui/AppDropdown.vue` | 通用下拉菜单（Teleport + nextZIndex 动态层级 + click-outside，trigger/default slot） |
+| `CausalityPanel` | `components/ui/CausalityPanel.vue` | 因果追踪面板；实时显示生理状态变化的因果链（Phase 4），支持事件展开、机制说明、下游效应树、来源/置信度显示 |
 
 ### 项目相关组件
 | 组件 | 说明 |
