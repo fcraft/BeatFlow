@@ -29,7 +29,7 @@ describe('CausalityPanel', () => {
   it('renders event count', () => {
     const events = [makeEvent(), makeEvent({ id: 'evt-002', source: 'exercise_model', target: 'contractility' })]
     const wrapper = mount(CausalityPanel, { props: { events } })
-    expect(wrapper.text()).toContain('(2)')
+    expect(wrapper.text()).toContain('2 events')
   })
 
   it('renders source label', () => {
@@ -61,7 +61,7 @@ describe('CausalityPanel', () => {
     const row = wrapper.find('.cursor-pointer')
     await row.trigger('click')
     expect(wrapper.text()).toContain('MAP↓ → baroreceptor unloading')
-    expect(wrapper.text()).toContain('Source: baroreflex / MAP_drop_15mmHg')
+    expect(wrapper.text()).toContain('baroreflex / MAP_drop_15mmHg')
   })
 
   it('shows negative delta in red', () => {
@@ -69,7 +69,7 @@ describe('CausalityPanel', () => {
       props: { events: [makeEvent({ delta: -5.0, old_value: 85, new_value: 80 })] },
     })
     expect(wrapper.text()).toContain('-5.0')
-    const el = wrapper.find('.text-red-600')
+    const el = wrapper.find('[class*="text-\\[\\#FF3B30\\]"]')
     expect(el.exists()).toBe(true)
   })
 

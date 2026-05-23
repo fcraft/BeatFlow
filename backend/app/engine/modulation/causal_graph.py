@@ -334,6 +334,7 @@ def create_default_graph() -> CausalGraph:
 
     def ans_balance_fn(d: dict) -> dict:
         """Merge all autonomic drives into final sympathetic/parasympathetic."""
+        # Start from baseline
         symp = 0.5
         symp += d.get("baro_symp", 0.5) - 0.5
         symp += d.get("chemo_symp_drive", 0.0) * 0.3
@@ -346,6 +347,14 @@ def create_default_graph() -> CausalGraph:
         para += d.get("baro_para", 0.5) - 0.5
         para -= d.get("emotional_para_suppress", 0.0) * 0.3
         para = _clamp(para, 0.1, 1.0)
+
+        # User intent overrides (e.g., jog/hike command)
+        symp_override = d.get("symp_override", 0.0)
+        para_override = d.get("para_override", 0.0)
+        if symp_override > 0.01:
+            symp = symp_override
+        if para_override > 0.01:
+            para = para_override
 
         return {"sympathetic_tone": symp, "parasympathetic_tone": para}
 
@@ -559,6 +568,25 @@ def create_default_graph() -> CausalGraph:
         time_constant_ms=500.0,
     ))
 
+    def preload_fn(d: dict) -> dict:
+        """Compute preload_modifier from exercise and sympathetic tone.
+
+        Exercise → venoconstriction → ↑ preload.
+        Sympathetic activation → splanchnic vasoconstriction → ↑ venous return.
+        """
+        symp = d["sympathetic_tone"]
+        ex = d.get("exercise_intensity", 0.0)
+        base = 1.0 + 0.15 * (symp - 0.5) + 0.2 * ex
+        return {"preload_modifier": _clamp(base, 0.5, 2.0)}
+
+    nodes.append(CausalNode(
+        name="preload",
+        inputs=["sympathetic_tone", "exercise_intensity"],
+        outputs=["preload_modifier"],
+        transfer_fn=preload_fn,
+        time_constant_ms=1000.0,
+    ))
+
     return CausalGraph(nodes, external_inputs={
         "map_mmhg", "paco2_mmhg", "pao2_mmhg", "ph",
         "temperature_c", "cardiac_output",
@@ -566,4 +594,6 @@ def create_default_graph() -> CausalGraph:
         "beta_blocker", "amiodarone", "digoxin", "atropine",
         "potassium_level", "calcium_level",
         "emotional_arousal",
+        "symp_override", "para_override",
+        "rv_contractility",
     })

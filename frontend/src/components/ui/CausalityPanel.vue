@@ -1,8 +1,7 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
-import { Activity, ChevronDown, ChevronRight, GitBranch, TrendingUp, TrendingDown, Minus, Zap, X } from 'lucide-vue-next'
+import { ref, computed } from 'vue'
+import { ChevronDown, ChevronRight, TrendingUp, TrendingDown, Minus, GitBranch } from 'lucide-vue-next'
 
-// ─── Types ───
 export interface CausalEvent {
   id: string
   timestamp_ms: number
@@ -18,17 +17,14 @@ export interface CausalEvent {
   parent_event_id: string | null
 }
 
-// ─── Props ───
 const props = defineProps<{
   events: CausalEvent[]
   maxVisible?: number
 }>()
 
-// ─── State ───
 const expandedEventId = ref<string | null>(null)
 const showAll = ref(false)
 
-// ─── Computed ───
 const visibleEvents = computed(() => {
   const limit = props.maxVisible ?? 5
   if (showAll.value) return props.events
@@ -45,41 +41,23 @@ const eventChains = computed(() => {
   return chainMap
 })
 
-const latestEvents = computed(() => props.events.slice(-10))
-
-// ─── Helpers ───
-function sourceLabel(source: string): string {
-  const map: Record<string, string> = {
-    command: 'User',
-    baroreflex: 'Baroreflex',
-    chemoreflex: 'Chemoreflex',
-    raas: 'RAAS',
-    exercise_model: 'Exercise',
-    pharmacokinetics: 'Drug',
-    hemorrhage: 'Hemorrhage',
-    sepsis: 'Sepsis',
-    hemodynamics: 'Hemo',
-    ecg_morphology: 'ECG',
-    pcg_acoustics: 'PCG',
-  }
-  return map[source] || source
+// ── source label & color (dark theme) ──
+const SOURCE_META: Record<string, { label: string; cls: string }> = {
+  command:           { label: 'User',        cls: 'bg-blue-500/15 text-blue-400' },
+  baroreflex:        { label: 'Baroreflex',  cls: 'bg-amber-500/15 text-amber-400' },
+  chemoreflex:       { label: 'Chemoreflex', cls: 'bg-orange-500/15 text-orange-400' },
+  raas:              { label: 'RAAS',        cls: 'bg-red-500/15 text-red-400' },
+  exercise_model:    { label: 'Exercise',    cls: 'bg-green-500/15 text-green-400' },
+  pharmacokinetics:  { label: 'Drug',        cls: 'bg-purple-500/15 text-purple-400' },
+  hemorrhage:        { label: 'Hemorrhage',  cls: 'bg-red-500/15 text-red-400' },
+  sepsis:            { label: 'Sepsis',      cls: 'bg-rose-500/15 text-rose-400' },
+  hemodynamics:      { label: 'Hemo',        cls: 'bg-cyan-500/15 text-cyan-400' },
+  ecg_morphology:    { label: 'ECG',         cls: 'bg-teal-500/15 text-teal-400' },
+  pcg_acoustics:     { label: 'PCG',         cls: 'bg-indigo-500/15 text-indigo-400' },
 }
 
-function sourceColor(source: string): string {
-  const map: Record<string, string> = {
-    command: 'bg-blue-100 text-blue-700',
-    baroreflex: 'bg-amber-100 text-amber-700',
-    chemoreflex: 'bg-orange-100 text-orange-700',
-    raas: 'bg-red-100 text-red-700',
-    exercise_model: 'bg-green-100 text-green-700',
-    pharmacokinetics: 'bg-purple-100 text-purple-700',
-    hemorrhage: 'bg-red-100 text-red-800',
-    sepsis: 'bg-rose-100 text-rose-800',
-    hemodynamics: 'bg-cyan-100 text-cyan-700',
-    ecg_morphology: 'bg-teal-100 text-teal-700',
-    pcg_acoustics: 'bg-indigo-100 text-indigo-700',
-  }
-  return map[source] || 'bg-gray-100 text-gray-600'
+function sourceMeta(source: string) {
+  return SOURCE_META[source] || { label: source, cls: 'bg-white/10 text-white/50' }
 }
 
 function deltaIcon(delta: number | null) {
@@ -90,10 +68,10 @@ function deltaIcon(delta: number | null) {
 }
 
 function deltaClass(delta: number | null): string {
-  if (delta === null) return 'text-gray-400'
-  if (delta > 0) return 'text-green-600'
-  if (delta < 0) return 'text-red-600'
-  return 'text-gray-400'
+  if (delta === null) return 'text-white/25'
+  if (delta > 0) return 'text-[#34C759]'
+  if (delta < 0) return 'text-[#FF3B30]'
+  return 'text-white/25'
 }
 
 function fmtDelta(delta: number | null): string {
@@ -121,19 +99,16 @@ function getChainChildren(parentId: string | null): CausalEvent[] {
 </script>
 
 <template>
-  <div class="space-y-3">
-    <!-- Header -->
-    <div class="flex items-center justify-between">
-      <div class="flex items-center gap-2 text-sm font-semibold text-gray-700">
-        <Activity class="w-4 h-4" />
-        Causal Events
-        <span class="text-xs text-gray-400 font-normal tabular-nums">
-          ({{ events.length }})
-        </span>
-      </div>
+  <div class="flex flex-col min-h-0">
+    <!-- Toolbar: count + show-all toggle -->
+    <div class="flex items-center justify-between mb-2" v-if="events.length > 0">
+      <span
+        class="text-[10px] text-white/25 tabular-nums"
+        style="font-family: var(--cmd-font-mono)"
+      >{{ events.length }} events</span>
       <button
         v-if="events.length > (maxVisible ?? 5)"
-        class="btn-ghost btn-sm text-xs text-gray-500"
+        class="text-[10px] text-white/30 hover:text-white/60 transition-colors"
         @click="showAll = !showAll"
       >
         {{ showAll ? 'Show recent' : 'Show all' }}
@@ -143,131 +118,107 @@ function getChainChildren(parentId: string | null): CausalEvent[] {
     <!-- Empty state -->
     <div
       v-if="events.length === 0"
-      class="p-6 text-center text-sm text-gray-400 border-2 border-dashed border-gray-200 rounded-lg"
+      class="py-8 text-center"
     >
-      <Zap class="w-5 h-5 mx-auto mb-1 opacity-40" />
-      No causal events yet — start a simulation to see physiological cause-effect chains
+      <GitBranch class="w-5 h-5 mx-auto mb-2 text-white/10" />
+      <p class="text-xs text-white/20">
+        No causal events yet — start a simulation to see physiological cause-effect chains
+      </p>
     </div>
 
-    <!-- Event stream -->
-    <TransitionGroup
-      v-else
-      name="event"
-      tag="div"
-      class="space-y-2"
-    >
+    <!-- Event list — no TransitionGroup, stable rendering -->
+    <div v-else class="space-y-1 overflow-y-auto min-h-0" style="max-height: 55vh">
       <div
         v-for="evt in visibleEvents"
         :key="evt.id"
-        class="border border-gray-200 rounded-lg transition-all duration-150"
-        :class="expandedEventId === evt.id ? 'bg-gray-50 shadow-sm' : 'bg-white hover:border-gray-300'"
+        class="rounded-lg border transition-colors duration-75"
+        :class="expandedEventId === evt.id
+          ? 'border-white/[0.10] bg-white/[0.04]'
+          : 'border-transparent hover:border-white/[0.05] hover:bg-white/[0.02]'"
       >
         <!-- Event row -->
         <div
-          class="flex items-start gap-2.5 p-2.5 cursor-pointer select-none"
+          class="flex items-start gap-2 px-2.5 py-2 cursor-pointer select-none"
           @click="toggleExpand(evt.id)"
         >
-          <button class="mt-0.5 flex-shrink-0 text-gray-400">
-            <ChevronRight v-if="expandedEventId !== evt.id" class="w-3.5 h-3.5" />
-            <ChevronDown v-else class="w-3.5 h-3.5" />
-          </button>
+          <!-- Expand toggle -->
+          <span class="mt-0.5 shrink-0 text-white/25">
+            <ChevronRight v-if="expandedEventId !== evt.id" class="w-3 h-3" />
+            <ChevronDown v-else class="w-3 h-3" />
+          </span>
 
           <!-- Source badge -->
           <span
-            class="text-xs px-1.5 py-0.5 rounded font-medium flex-shrink-0"
-            :class="sourceColor(evt.source)"
-          >
-            {{ sourceLabel(evt.source) }}
+            class="text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0 leading-tight"
+            :class="sourceMeta(evt.source).cls"
+          >{{ sourceMeta(evt.source).label }}</span>
+
+          <!-- Target & value transition -->
+          <span class="flex-1 min-w-0 text-xs leading-tight truncate">
+            <span class="text-white/80">{{ evt.target }}</span>
+            <span class="text-white/20 mx-0.5">·</span>
+            <span
+              class="tabular-nums"
+              style="font-family: var(--cmd-font-mono)"
+            >{{ fmtValue(evt.old_value) }} → {{ fmtValue(evt.new_value) }}</span>
           </span>
 
-          <!-- Target & delta -->
-          <div class="flex-1 min-w-0">
-            <span class="text-sm text-gray-800 font-medium">{{ evt.target }}</span>
-            <span class="text-xs text-gray-500 ml-1">
-              {{ fmtValue(evt.old_value) }} → {{ fmtValue(evt.new_value) }}
-            </span>
-          </div>
-
-          <!-- Delta badge -->
+          <!-- Delta -->
           <span
-            class="text-xs tabular-nums font-medium flex-shrink-0 flex items-center gap-0.5"
+            class="text-[10px] tabular-nums font-medium shrink-0 flex items-center gap-0.5"
             :class="deltaClass(evt.delta)"
+            style="font-family: var(--cmd-font-mono)"
           >
-            <component :is="deltaIcon(evt.delta)" class="w-3 h-3" />
+            <component :is="deltaIcon(evt.delta)" class="w-2.5 h-2.5" />
             {{ fmtDelta(evt.delta) }}
-          </span>
-
-          <!-- Confidence -->
-          <span
-            v-if="evt.confidence < 1.0"
-            class="text-xs text-gray-400 flex-shrink-0"
-          >
-            {{ (evt.confidence * 100).toFixed(0) }}%
           </span>
         </div>
 
-        <!-- Expanded: mechanism + chain -->
+        <!-- Expanded detail -->
         <div
           v-if="expandedEventId === evt.id"
-          class="px-2.5 pb-2.5 border-t border-gray-100"
+          class="px-2.5 pb-2.5 border-t border-white/[0.06]"
         >
           <!-- Mechanism -->
-          <div class="flex items-start gap-2 mt-2 text-xs text-gray-600">
-            <GitBranch class="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-gray-400" />
+          <div class="flex items-start gap-1.5 mt-2 text-[11px] text-white/45">
+            <GitBranch class="w-3 h-3 mt-0.5 shrink-0 text-white/15" />
             <span>{{ evt.mechanism || 'No mechanism description available' }}</span>
           </div>
 
           <!-- Source detail -->
-          <div class="mt-1 text-xs text-gray-400">
-            Source: {{ evt.source }} / {{ evt.source_detail || '—' }}
+          <div class="mt-1 text-[10px] text-white/20">
+            {{ evt.source }}<span v-if="evt.source_detail"> / {{ evt.source_detail }}</span>
           </div>
 
           <!-- Chain children -->
           <div
             v-if="getChainChildren(evt.id).length > 0"
-            class="mt-2 ml-4 pl-3 border-l-2 border-gray-200 space-y-1"
+            class="mt-2 ml-3 pl-2.5 border-l border-white/[0.08] space-y-1"
           >
             <div
               v-for="child in getChainChildren(evt.id)"
               :key="child.id"
-              class="flex items-center gap-2 text-xs"
+              class="flex items-center gap-1.5 text-[10px]"
             >
+              <span class="px-1 py-0.5 rounded" :class="sourceMeta(child.source).cls">
+                {{ sourceMeta(child.source).label }}
+              </span>
+              <span class="text-white/60">{{ child.target }}</span>
               <span
-                class="px-1 py-0.5 rounded text-xs"
-                :class="sourceColor(child.source)"
-              >
-                {{ sourceLabel(child.source) }}
-              </span>
-              <span class="text-gray-700">{{ child.target }}</span>
-              <span class="tabular-nums font-medium" :class="deltaClass(child.delta)">
-                {{ fmtDelta(child.delta) }}
-              </span>
+                class="tabular-nums font-medium"
+                :class="deltaClass(child.delta)"
+                style="font-family: var(--cmd-font-mono)"
+              >{{ fmtDelta(child.delta) }}</span>
             </div>
           </div>
 
           <!-- Event ID -->
-          <div class="mt-1.5 text-xs text-gray-300 font-mono">
-            {{ evt.id }}
-          </div>
+          <div
+            class="mt-1.5 text-[9px] text-white/10"
+            style="font-family: var(--cmd-font-mono)"
+          >{{ evt.id }}</div>
         </div>
       </div>
-    </TransitionGroup>
+    </div>
   </div>
 </template>
-
-<style scoped>
-.event-enter-active {
-  transition: all 0.3s ease-out;
-}
-.event-leave-active {
-  transition: all 0.2s ease-in;
-}
-.event-enter-from {
-  opacity: 0;
-  transform: translateY(-8px);
-}
-.event-leave-to {
-  opacity: 0;
-  transform: translateX(12px);
-}
-</style>

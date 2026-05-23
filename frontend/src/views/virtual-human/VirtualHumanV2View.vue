@@ -154,17 +154,24 @@ onUnmounted(() => {
     <Teleport to="body">
       <div
         v-if="showCausalPanel && store.connected"
-        class="fixed top-12 right-3 w-80 max-h-[65vh] overflow-y-auto z-[100]
-               bg-gray-950/95 backdrop-blur-xl border border-white/[0.08] rounded-xl
-               shadow-2xl p-3.5"
+        class="fixed top-12 right-3 w-80 max-h-[65vh] z-[900]
+               bg-gray-950/70 backdrop-blur-xl border border-white/[0.12]
+               rounded-xl shadow-2xl overflow-hidden flex flex-col"
       >
-        <div class="flex items-center justify-between mb-2.5">
-          <span class="text-xs font-semibold text-white/70">Causal Trace</span>
-          <button class="text-white/30 hover:text-white/70 transition-colors" @click="showCausalPanel = false">
-            <X :size="14" />
+        <!-- Header -->
+        <div class="flex items-center justify-between px-3 py-1.5 bg-white/[0.06] border-b border-white/[0.08] shrink-0">
+          <span class="text-xs font-medium text-white/70 tracking-wide">Causal Trace</span>
+          <button
+            class="p-0.5 rounded hover:bg-white/10 transition-colors"
+            @click="showCausalPanel = false"
+          >
+            <X :size="14" class="text-white/50" />
           </button>
         </div>
-        <CausalityPanel :events="store.causalEvents" :max-visible="6" />
+        <!-- Content -->
+        <div class="p-2.5 overflow-y-auto flex-1 min-h-0">
+          <CausalityPanel :events="store.causalEvents" :max-visible="6" />
+        </div>
       </div>
     </Teleport>
 

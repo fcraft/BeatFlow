@@ -978,7 +978,7 @@ class SimulationPipeline:
         from app.engine.modulation.autonomic_reflex import AutonomicReflexController
         from app.engine.modulation.pharmacokinetics import PharmacokineticsEngine
         from app.engine.modulation.physiology_modulator import (
-            AutonomicState, compute_modifiers,
+            AutonomicState, _apply_interaction, compute_modifiers,
         )
         from app.engine.simulation.validator import check_beat_invariants
 
@@ -1026,6 +1026,9 @@ class SimulationPipeline:
                 "atropine": pharma_levels.get("atropine", 0.0),
                 "potassium_level": smoothed.potassium_level,
                 "calcium_level": smoothed.calcium_level,
+                "symp_override": getattr(smoothed, 'sympathetic_tone_override', None) or 0.0,
+                "para_override": getattr(smoothed, 'parasympathetic_tone_override', None) or 0.0,
+                "rv_contractility": getattr(smoothed, 'rv_contractility', 1.0),
             }
             result = self._causal_graph.step(rr_sec, external)
 
@@ -1035,8 +1038,13 @@ class SimulationPipeline:
             m.contractility_modifier = result.get("contractility_modifier", 1.0)
             m.tpr_modifier = result.get("tpr_modifier", 1.0)
             m.av_delay_modifier = result.get("av_delay_modifier", 1.0)
+            m.preload_modifier = result.get("preload_modifier", 1.0)
             m.sympathetic_tone = result.get("sympathetic_tone", 0.5)
             m.parasympathetic_tone = result.get("parasympathetic_tone", 0.5)
+
+            # Propagate InteractionState fields to Modifiers so downstream
+            # models (exercise, respiratory, electrolytes, etc.) read correct values
+            _apply_interaction(m, smoothed)
         else:
             # Legacy path
             self._modifiers = compute_modifiers(
@@ -1133,35 +1141,39 @@ class SimulationPipeline:
         loop = asyncio.get_running_loop()
         try:
             while self._running:
-                if self._modifiers.hr_override is not None:
-                    eff_hr = self._modifiers.hr_override
-                else:
-                    eff_hr = self._base_hr * self._modifiers.sa_rate_modifier
-                eff_hr = max(20.0, min(300.0, eff_hr))
-                rr_sec = 60.0 / eff_hr
+                try:
+                    if self._modifiers.hr_override is not None:
+                        eff_hr = self._modifiers.hr_override
+                    else:
+                        eff_hr = self._base_hr * self._modifiers.sa_rate_modifier
+                    eff_hr = max(20.0, min(300.0, eff_hr))
+                    rr_sec = 60.0 / eff_hr
 
-                buffered_ecg_chunks = len(self._ecg_buf) / ECG_CHUNK_SIZE
+                    buffered_ecg_chunks = len(self._ecg_buf) / ECG_CHUNK_SIZE
 
-                # Tight buffer management: target 2~8 chunks (200~800ms)
-                # to minimize latency between state changes and visible
-                # waveform updates, while still preventing underruns.
-                if buffered_ecg_chunks < 2:
-                    # Critical low — generate 1 beat, minimal sleep
-                    await loop.run_in_executor(None, self._run_one_beat)
-                    sleep_time = 0.001
-                elif buffered_ecg_chunks < 5:
-                    # Normal — generate 1 beat at real-time pace
-                    await loop.run_in_executor(None, self._run_one_beat)
-                    sleep_time = rr_sec * 0.4
-                elif buffered_ecg_chunks > 8:
-                    # Buffer too deep — skip generation, let drain catch up
-                    sleep_time = rr_sec * 0.5
-                else:
-                    # 5~8 chunks — cruise, generate slowly
-                    await loop.run_in_executor(None, self._run_one_beat)
-                    sleep_time = rr_sec * 0.8
+                    # Tight buffer management: target 2~8 chunks (200~800ms)
+                    # to minimize latency between state changes and visible
+                    # waveform updates, while still preventing underruns.
+                    if buffered_ecg_chunks < 2:
+                        # Critical low — generate 1 beat, minimal sleep
+                        await loop.run_in_executor(None, self._run_one_beat)
+                        sleep_time = 0.001
+                    elif buffered_ecg_chunks < 5:
+                        # Normal — generate 1 beat at real-time pace
+                        await loop.run_in_executor(None, self._run_one_beat)
+                        sleep_time = rr_sec * 0.4
+                    elif buffered_ecg_chunks > 8:
+                        # Buffer too deep — skip generation, let drain catch up
+                        sleep_time = rr_sec * 0.5
+                    else:
+                        # 5~8 chunks — cruise, generate slowly
+                        await loop.run_in_executor(None, self._run_one_beat)
+                        sleep_time = rr_sec * 0.8
 
-                await asyncio.sleep(max(0.001, sleep_time))
+                    await asyncio.sleep(max(0.001, sleep_time))
+                except Exception:
+                    logger.exception("Beat generation failed — retrying")
+                    await asyncio.sleep(0.1)
         except asyncio.CancelledError:
             pass
 
