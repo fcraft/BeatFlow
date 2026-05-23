@@ -82,7 +82,8 @@ class CausalTracker:
         self._max_events = max_events
         self._buffer: deque[CausalEvent] = deque(maxlen=max_events)
         self._stream_start_ms = time.monotonic() * 1000.0
-        self._drain_cursor: int = 0
+        self._next_seq: int = 0
+        self._drain_seq: int = 0
 
     def record(
         self,
@@ -117,6 +118,8 @@ class CausalTracker:
             confidence=confidence,
             parent_event_id=parent_event_id,
         )
+        event._seq = self._next_seq  # type: ignore[attr-defined]
+        self._next_seq += 1
         self._buffer.append(event)
         return event
 
@@ -159,10 +162,13 @@ class CausalTracker:
     def drain(self) -> list[dict[str, Any]]:
         """Return events recorded since the last drain() call.
 
-        Use this for WebSocket push — ensures each event is sent exactly once.
+        Uses monotonically increasing sequence numbers (not buffer cursors)
+        so the bounded deque dropping old items from the left does not
+        cause missed or duplicated events.
         """
-        events = list(self._buffer)[self._drain_cursor:]
-        self._drain_cursor = len(self._buffer)
+        events = [e for e in self._buffer if e._seq >= self._drain_seq]  # type: ignore[attr-defined]
+        if events:
+            self._drain_seq = events[-1]._seq + 1  # type: ignore[attr-defined]
         return [e.to_dict() for e in events]
 
     def recent(self, n: int = 20) -> list[dict[str, Any]]:
@@ -173,7 +179,7 @@ class CausalTracker:
     def clear(self) -> None:
         """Clear all recorded events."""
         self._buffer.clear()
-        self._drain_cursor = 0
+        self._drain_seq = 0
 
     def __len__(self) -> int:
-        return len(self._buffer) - self._drain_cursor
+        return sum(1 for e in self._buffer if e._seq >= self._drain_seq)  # type: ignore[attr-defined]

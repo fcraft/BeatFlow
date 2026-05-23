@@ -28,7 +28,8 @@ const showAll = ref(false)
 const visibleEvents = computed(() => {
   const limit = props.maxVisible ?? 5
   if (showAll.value) return props.events
-  return props.events.slice(-limit)
+  // Store prepends new events to the front; slice(0, limit) shows newest.
+  return props.events.slice(0, limit)
 })
 
 const eventChains = computed(() => {

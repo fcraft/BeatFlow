@@ -237,12 +237,14 @@ class SimulationPipeline:
             intent.sa_rate_modifier_override = None
             intent.contractility_modifier_override = None
         elif cmd == "climb_stairs":
+            self._record_command_event(cmd, "Climbing stairs")
             intent.exercise_intensity = 0.65
             intent.hr_override = None
             intent.sympathetic_tone_override = 0.75
             intent.sa_rate_modifier_override = None
             intent.contractility_modifier_override = None
         elif cmd == "squat":
+            self._record_command_event(cmd, "Squat exercise")
             intent.exercise_intensity = 0.5
             intent.emotional_arousal = min(1.0, intent.emotional_arousal + 0.3)
             intent.hr_override = None
@@ -252,23 +254,29 @@ class SimulationPipeline:
 
         # === Emotion (5) ===
         elif cmd == "startle":
+            self._record_command_event(cmd, "Startle response")
             intent.emotional_arousal = 0.9
         elif cmd == "anxiety":
+            self._record_command_event(cmd, "Anxiety episode")
             intent.emotional_arousal = 0.6
         elif cmd == "relaxation":
+            self._record_command_event(cmd, "Relaxation")
             intent.exercise_intensity = 0.0
             intent.emotional_arousal = 0.0
             intent.hr_override = None
         elif cmd == "stress":
+            self._record_command_event(cmd, "Stress response")
             intent.emotional_arousal = 0.7
             intent.temperature = 36.8
         elif cmd == "fatigue":
+            self._record_command_event(cmd, "Fatigue onset")
             intent.emotional_arousal = 0.2
             intent.exercise_intensity = 0.1
             intent.fatigue_level = 0.6
 
         # === Cardiac condition (14) ===
         elif cmd == "condition_normal":
+            self._record_command_event(cmd, "Reset to normal sinus")
             intent.rhythm_override = ''
             intent.av_block_degree = 0
             intent.hr_override = None
@@ -278,7 +286,7 @@ class SimulationPipeline:
             intent.defibrillation_count = 0
             intent.pvc_pattern = 'isolated'
         elif cmd == "condition_af":
-            severity = float(p.get("severity", 0.5))
+            self._record_command_event(cmd, f"AF severity={p.get('severity', 0.5)}")
             intent.rhythm_override = 'af'
             intent.damage_level = severity
             intent.af_substrate = max(intent.af_substrate, severity)
@@ -311,18 +319,22 @@ class SimulationPipeline:
             intent.hr_override = max(150.0, target_hr)
             intent.svt_substrate = max(intent.svt_substrate, 0.5)
         elif cmd == "condition_vt":
-            severity = float(p.get("severity", 0.7))
+            self._record_command_event(cmd, f"VT severity={p.get('severity', 0.7)}")
             intent.rhythm_override = 'vt'
             intent.hr_override = 180.0
             intent.damage_level = 0.7
             intent.vt_substrate = max(intent.vt_substrate, severity)
         elif cmd == "condition_av_block_1":
+            self._record_command_event(cmd, "1st-degree AV block")
             intent.av_block_degree = 1
         elif cmd == "condition_av_block_2":
+            self._record_command_event(cmd, "2nd-degree AV block")
             intent.av_block_degree = 2
         elif cmd == "condition_av_block_3":
+            self._record_command_event(cmd, "3rd-degree AV block")
             intent.av_block_degree = 3
         elif cmd == "condition_vf":
+            self._record_command_event(cmd, "Ventricular fibrillation")
             intent.rhythm_override = 'vf'
             intent.hr_override = None
         elif cmd == "condition_asystole":
@@ -356,6 +368,7 @@ class SimulationPipeline:
                 intent.hr_override = None
 
         elif cmd == "cardiovert":
+            self._record_command_event(cmd, "Synchronized cardioversion")
             current_rhythm = self._modifiers.rhythm_override
             if current_rhythm not in ('af', 'svt', 'vt'):
                 return
@@ -372,25 +385,32 @@ class SimulationPipeline:
         # === Body state (7) ===
         elif cmd == "caffeine":
             dose = max(0.1, min(1.0, float(p.get("dose", 0.5))))
+            self._record_command_event(cmd, f"Caffeine dose={dose:.1f}")
             intent.caffeine_level = min(1.0, intent.caffeine_level + dose)
         elif cmd == "alcohol":
             dose = max(0.1, min(1.0, float(p.get("dose", 0.4))))
+            self._record_command_event(cmd, f"Alcohol dose={dose:.1f}")
             intent.alcohol_level = min(1.0, intent.alcohol_level + dose)
         elif cmd == "fever":
             temp = max(37.5, min(41.0, float(p.get("temperature", 38.5))))
+            self._record_command_event(cmd, f"Fever T={temp:.1f}°C")
             intent.temperature = temp
             delta = temp - 37.0
             intent.dehydration_level = min(1.0, intent.dehydration_level + delta * 0.1)
         elif cmd == "sleep_deprivation":
             severity = max(0.1, min(1.0, float(p.get("severity", 0.6))))
+            self._record_command_event(cmd, f"Sleep debt={severity:.1f}")
             intent.sleep_debt = severity
             intent.emotional_arousal = min(1.0, intent.emotional_arousal + severity * 0.2)
         elif cmd == "dehydration":
             severity = max(0.1, min(1.0, float(p.get("severity", 0.5))))
+            self._record_command_event(cmd, f"Dehydration={severity:.1f}")
             intent.dehydration_level = severity
         elif cmd == "hydrate":
+            self._record_command_event(cmd, "Hydration")
             intent.dehydration_level = 0.0
         elif cmd == "sleep":
+            self._record_command_event(cmd, "Recovery sleep")
             intent.sleep_debt = 0.0
             intent.fatigue_level = 0.0
             intent.emotional_arousal = 0.0
@@ -474,6 +494,7 @@ class SimulationPipeline:
             self.generate_ecg_variance(seed)
 
         elif cmd == "reset":
+            self._record_command_event(cmd, "Reset to healthy baseline")
             self._intent = InteractionState()
             self._transition.reset()
             self._modifiers = Modifiers()
