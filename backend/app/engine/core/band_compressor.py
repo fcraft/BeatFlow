@@ -136,10 +136,10 @@ def design_pcg_compressor(sample_rate: int = 4000) -> BandCompressor:
     return BandCompressor(
         sample_rate=sample_rate,
         crossover_freqs=[100.0, 250.0, 500.0],
-        thresholds=[0.15, 0.20, 0.12, 0.06],
+        thresholds=[0.05, 0.07, 0.04, 0.025],
         ratios=[2.0, 2.0, 3.0, 4.0],
         attack_ms=5.0,
         release_ms=50.0,
         knee_db=6.0,
-        makeup_gains=[1.0, 1.0, 1.0, 1.05],
+        makeup_gains=[1.0, 1.0, 1.15, 1.3],
     )

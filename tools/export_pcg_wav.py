@@ -161,7 +161,7 @@ def main():
         print(f"Exporting 4 positions ({args.mode}/{args.scenario}):")
         for pos in ['aortic', 'pulmonic', 'tricuspid', 'mitral']:
             path = os.path.join(args.output, f"{args.mode}_{args.scenario}_{pos}.wav")
-            export_wav(frames, pos)
+            export_wav(frames, path, pos)
     else:
         path = os.path.join(args.output, f"{args.mode}_{args.scenario}.wav")
         export_wav(frames, path)
