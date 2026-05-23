@@ -76,6 +76,10 @@ class SimulationPipeline:
         self._pcg_engine_mode: str = 'parametric'
         self._hemo: Optional[AlgebraicHemodynamics] = None
 
+        # Phase 3A: causal graph engine (feature-flagged, default off)
+        self._causal_graph: Any = None
+        self._use_causal_graph: bool = False
+
         # Cross-cutting modules
         self._autonomic: Any = None
         self._pharma: Any = None
@@ -396,6 +400,15 @@ class SimulationPipeline:
             mode = str(p.get("mode", "parametric"))
             if mode in ("parametric", "physical"):
                 self.set_pcg_engine_mode(mode)
+
+        # === Causal Graph Engine (Phase 3A) ===
+        elif cmd == "set_causal_graph":
+            enabled = bool(p.get("enabled", False))
+            self._use_causal_graph = enabled
+            if enabled and self._causal_graph is None:
+                from app.engine.modulation.causal_graph import create_default_graph
+                self._causal_graph = create_default_graph()
+            logger.info("Causal graph engine: %s", "ON" if enabled else "OFF")
 
         # === ECG Morphology / STEMI / Variance (Phase 2) ===
         elif cmd == "set_ecg_morph":
@@ -935,15 +948,46 @@ class SimulationPipeline:
         # 4. Compute modifiers — build a state_ref-like object for exercise model
         state_ref = self._build_state_ref()
 
-        self._modifiers = compute_modifiers(
-            autonomic=AutonomicState(sympathetic_tone=symp, parasympathetic_tone=para),
-            pharma_levels=pharma_levels,
-            damage_level=smoothed.damage_level,
-            base_modifiers=None,
-            interaction=smoothed,
-            state_ref=state_ref,
-            beat_index=self._conduction._beat_index if self._conduction else 0,
-        )
+        if self._use_causal_graph and self._causal_graph is not None:
+            # Phase 3A: causal graph path
+            external = {
+                "map_mmhg": hemo.mean_arterial_pressure,
+                "paco2_mmhg": self._modifiers.paco2,
+                "pao2_mmhg": self._modifiers.pao2,
+                "ph": self._modifiers.ph,
+                "temperature_c": self._modifiers.temperature,
+                "cardiac_output": hemo.cardiac_output,
+                "exercise_intensity": smoothed.exercise_intensity,
+                "damage_level": smoothed.damage_level,
+                "emotional_arousal": smoothed.emotional_arousal,
+                "beta_blocker": pharma_levels.get("beta_blocker", 0.0),
+                "amiodarone": pharma_levels.get("amiodarone", 0.0),
+                "digoxin": pharma_levels.get("digoxin", 0.0),
+                "atropine": pharma_levels.get("atropine", 0.0),
+                "potassium_level": smoothed.potassium_level,
+                "calcium_level": smoothed.calcium_level,
+            }
+            result = self._causal_graph.step(rr_sec, external)
+
+            # Map graph outputs → Modifiers fields
+            m = self._modifiers
+            m.sa_rate_modifier = result.get("sa_rate_modifier", 1.0)
+            m.contractility_modifier = result.get("contractility_modifier", 1.0)
+            m.tpr_modifier = result.get("tpr_modifier", 1.0)
+            m.av_delay_modifier = result.get("av_delay_modifier", 1.0)
+            m.sympathetic_tone = result.get("sympathetic_tone", 0.5)
+            m.parasympathetic_tone = result.get("parasympathetic_tone", 0.5)
+        else:
+            # Legacy path
+            self._modifiers = compute_modifiers(
+                autonomic=AutonomicState(sympathetic_tone=symp, parasympathetic_tone=para),
+                pharma_levels=pharma_levels,
+                damage_level=smoothed.damage_level,
+                base_modifiers=None,
+                interaction=smoothed,
+                state_ref=state_ref,
+                beat_index=self._conduction._beat_index if self._conduction else 0,
+            )
 
         # 5. Invariant validation
         violations = check_beat_invariants(hemo)
