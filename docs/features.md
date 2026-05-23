@@ -141,7 +141,9 @@ Project {
 | DELETE | `/api/v1/files/{id}` | 删除文件 |
 | GET | `/api/v1/files/{id}/download` | 下载原始文件 |
 | GET | `/api/v1/files/{id}/waveform` | 获取波形数据；支持 `?max_points=N&start_time=s&end_time=s` 区间采样，响应含 `region_start`/`region_end` 字段 |
-| POST | `/api/v1/files/{id}/detect` | 运行自动检测算法 |
+| POST | `/api/v1/files/{id}/detect` | 运行自动检测算法并写入数据库；query params: `algorithm` (auto/scipy/neurokit2/wfdb), `s1_only` (PCG/Audio: 仅检测 S1，跳过 S2 分类) |
+| POST | `/api/v1/files/{id}/detect/preview` | 检测预览（仅返回结果不写数据库）；query params: `algorithm`, `s1_only` |
+| POST | `/api/v1/files/{id}/detect/region` | 区域重检测；query params: `start_time`, `end_time`, `algorithm`, `s1_only`；结果时间戳已映射回原始时间线 |
 | POST | `/api/v1/files/{id}/analyze` | BPM 分析 + 突变检测 + 自适应重探查 |
 | GET | `/api/v1/files/algorithms` | 获取可用检测算法列表 |
 
@@ -213,6 +215,8 @@ MediaFile {
 |------|------|------|
 | GET | `/api/v1/annotations/` | 获取标注列表（按 file_id 过滤） |
 | POST | `/api/v1/annotations/` | 创建标注 |
+| POST | `/api/v1/annotations/accept` | 接受检测预览标注（删除旧 auto 标注并插入新标注） |
+| PATCH | `/api/v1/annotations/batch` | 批量更新或删除标注（body: `{ ids, updates? | action: "delete" }`） |
 | PUT | `/api/v1/annotations/{id}` | 更新标注 |
 | DELETE | `/api/v1/annotations/{id}` | 删除标注 |
 
@@ -925,7 +929,9 @@ v2 `SimulationPipeline.apply_command()` 仅实现 12/48 个交互命令（25%）
 | `AppToast` | `components/ui/AppToast.vue` | 全局 Toast 通知（磨砂玻璃暗色质感，左侧彩色条+图标+进度条，支持 action 按钮；桌面端右上角、移动端底部弹出；多条堆叠） |
 | `AppModal` | `components/ui/AppModal.vue` | 通用对话框，v-model 控制显示 |
 | `BpmPanel` | `components/ui/BpmPanel.vue` | 心率数值显示面板 |
-| `DetectionPanel` | `components/ui/DetectionPanel.vue` | 自动检测结果展示 |
+| `DetectionPanel` | `components/ui/DetectionPanel.vue` | 自动检测算法选择与结果展示；PCG/Audio 类型支持"仅检测 S1"复选框 |
+| `ReviewPanel` | `components/ui/ReviewPanel.vue` | 检测结果审核面板；支持类型筛选/置信度筛选/批量接受或放弃 |
+| `ContextMenu` | `components/ui/ContextMenu.vue` | 通用右键菜单（Teleport + nextZIndex 动态层级 + 分组/禁用/快捷键） |
 | `ProjectPicker` | `components/ui/ProjectPicker.vue` | 项目选择器（基于 AppSelect，搜索+内联创建新项目，支持暗色模式） |
 | `FilePicker` | `components/ui/FilePicker.vue` | 文件选择器（基于 AppSelect，接收 `project-id` 自动加载文件列表，搜索+类型 badge，可选 `file-type` 按类型过滤，支持暗色模式） |
 | `AppSelect` | `components/ui/AppSelect.vue` | 通用下拉选择器（毛玻璃风格，Teleport 挂载到 body，支持搜索、图标、badge、暗色模式、footer slot） |
@@ -980,5 +986,6 @@ v2 `SimulationPipeline.apply_command()` 仅实现 12/48 个交互命令（25%）
 | `useAuthStore` | `store/auth.ts` | 认证状态（token、user、login/logout） |
 | `useProjectStore` | `store/project.ts` | 项目和文件数据 |
 | `useToastStore` | `store/toast.ts` | Toast 通知队列（success/error/warning/info），支持 action 按钮和 ToastOptions 配置 |
+| `useAnnotationReviewStore` | `store/annotationReview.ts` | 标注审核流程状态（待审核队列、筛选、选中/全选/取消、类型/置信度统计） |
 | `useNotificationStore` | `store/notification.ts` | 未读通知数量，fetchUnreadCount/markAllRead |
 | `useVirtualHumanStore` | `store/virtualHuman.ts` | 虚拟人体 WebSocket 连接管理、实时 vitals（含药物/电解质/defibrillation_count 字段）、听诊模式状态（区域/降噪）、档案 CRUD、信号回调分发（多订阅者模式）、`derivedActiveStates` 派生活动效果、`activeCountByCategory` 分类计数、`controlPanelTab` 控制面板 Tab 状态、`alarmMuted` 报警静音、`caliperMode` 卡尺测量模式 |

@@ -17,6 +17,11 @@ import { Download, ChevronDown, FileText } from 'lucide-vue-next'
 import { useToastStore } from '@/store/toast'
 import ProjectPicker from '@/components/ui/ProjectPicker.vue'
 import FilePicker from '@/components/ui/FilePicker.vue'
+import ContextMenu from '@/components/ui/ContextMenu.vue'
+import type { ContextMenuItem } from '@/components/ui/ContextMenu.vue'
+import ReviewPanel from '@/components/ui/ReviewPanel.vue'
+import { useAnnotationReviewStore } from '@/store/annotationReview'
+import { Zap, Scissors, Trash2, Search } from 'lucide-vue-next'
 
 const toast = useToastStore()
 
@@ -47,6 +52,23 @@ function fireMultiple() {
   toast.success('第 1 条：保存成功')
   setTimeout(() => toast.info('第 2 条：数据同步中'), 300)
   setTimeout(() => toast.warning('第 3 条：内存使用率 > 80%', '警告'), 600)
+}
+
+// ─── ContextMenu demo ───
+const contextMenu = ref<InstanceType<typeof ContextMenu> | null>(null)
+const cmItems = ref<ContextMenuItem[]>([])
+const cmCounter = ref(0)
+
+function showCmDemo(e: MouseEvent) {
+  cmCounter.value++
+  cmItems.value = [
+    { label: '重新检测此区域', shortcut: 'Ctrl+R', onClick: () => toast.success('区域检测已触发') },
+    { label: '剪切标注', shortcut: 'Ctrl+X', onClick: () => toast.info('已剪切') },
+    { label: '在此创建标注', shortcut: 'N', onClick: () => toast.success('标注已创建') },
+    { label: '', separator: true },
+    { label: 'AI 分析此区域', disabled: true, shortcut: '即将推出' },
+  ]
+  contextMenu.value?.show(e.clientX, e.clientY)
 }
 function fireLongAction() {
   toast.warning('你有未保存的更改', {
@@ -117,6 +139,20 @@ const miniTypeOptions = [
 // ─── ProjectPicker & FilePicker demo ───
 const pickerProjectId = ref('')
 const pickerFileId = ref('')
+
+// ─── ReviewPanel demo ───
+const reviewStore = useAnnotationReviewStore()
+
+function showReviewDemo() {
+  reviewStore.load([
+    { annotation_type: 's1', start_time: 0.12, end_time: 0.18, confidence: 0.95, label: 'S1' },
+    { annotation_type: 's2', start_time: 0.42, end_time: 0.48, confidence: 0.88, label: 'S2' },
+    { annotation_type: 's1', start_time: 0.92, end_time: 0.98, confidence: 0.52, label: 'S1' },
+    { annotation_type: 's2', start_time: 1.22, end_time: 1.28, confidence: 0.78, label: 'S2' },
+    { annotation_type: 's1', start_time: 1.72, end_time: 1.78, confidence: 0.91, label: 'S1' },
+    { annotation_type: 'murmur', start_time: 1.8, end_time: 2.3, confidence: 0.35, label: '杂音' },
+  ], 'demo-file-id', 'neurokit2')
+}
 </script>
 
 <template>
@@ -411,6 +447,31 @@ const pickerFileId = ref('')
             <input type="text" class="input" value="不可编辑" disabled />
           </div>
         </div>
+      </section>
+
+      <!-- ─── ContextMenu ─── -->
+      <section>
+        <h2 class="text-lg font-semibold text-gray-800 mb-1">右键菜单 (ContextMenu)</h2>
+        <p class="text-sm text-gray-500 mb-4">任意位置右键打开上下文菜单 · 支持分组/禁用/快捷键 · Teleport 到 body</p>
+        <div
+          class="h-32 bg-gray-100 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center text-sm text-gray-400 select-none cursor-context-menu"
+          @contextmenu.prevent="showCmDemo"
+        >
+          在此区域右键打开菜单 (已触发 {{ cmCounter }} 次)
+        </div>
+      </section>
+
+      <ContextMenu ref="contextMenu" :items="cmItems" @close="cmItems = []" />
+
+      <!-- ─── ReviewPanel ─── -->
+      <section>
+        <h2 class="text-lg font-semibold text-gray-800 mb-1">审核面板 (ReviewPanel)</h2>
+        <p class="text-sm text-gray-500 mb-4">检测结果审核面板 · 支持类型筛选/置信度筛选/批量接受或放弃</p>
+        <div class="flex gap-3 mb-4">
+          <button class="test-btn test-btn--blue" @click="showReviewDemo">加载模拟数据</button>
+          <button class="test-btn test-btn--slate" @click="reviewStore.reset()">重置</button>
+        </div>
+        <ReviewPanel @accepted="() => toast.success('已接受标注')" @rejected="() => toast.info('已放弃检测结果')" />
       </section>
     </div>
   </AppLayout>

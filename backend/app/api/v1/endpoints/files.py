@@ -275,6 +275,10 @@ async def detect_annotations(
         default="auto",
         description="检测算法: auto | scipy | neurokit2 | wfdb",
     ),
+    s1_only: bool = Query(
+        default=False,
+        description="PCG/Audio: 仅检测 S1，忽略 S2 分类（适用于 S2 信号极弱场景）",
+    ),
 ):
     """根据文件类型自动检测并生成标记（S1/S2 或 QRS/P/T）。
 
@@ -283,6 +287,10 @@ async def detect_annotations(
     - `scipy`     — 内置 SciPy 信号处理（最快，适合快速预览）
     - `neurokit2` — NeuroKit2 AI增强检测（精度更高，支持 ECG 全波形 P/Q/R/S/T）
     - `wfdb`      — PhysioNet WFDB/XQRS 算法（适合标准格式 ECG）
+
+    s1_only 参数（仅 PCG/Audio）：
+    - 为 true 时跳过 S2 检测，所有心音峰标记为 S1
+    - 适用于 S2 信号极弱、自动分类可能误判的场景
     """
     from app.core.deps import require_project_role
 
@@ -368,9 +376,9 @@ async def detect_annotations(
 
     if media_file.file_type in ("pcg", "audio"):
         if algo == "neurokit2":
-            detected = pcg_detect_neurokit2(sig, work_sr, duration)
+            detected = pcg_detect_neurokit2(sig, work_sr, duration, s1_only=s1_only)
         else:
-            detected = pcg_detect_scipy(sig, work_sr, duration)
+            detected = pcg_detect_scipy(sig, work_sr, duration, s1_only=s1_only)
     else:  # ecg
         if algo == "neurokit2":
             detected = ecg_detect_neurokit2(sig, work_sr, duration)
@@ -415,6 +423,297 @@ async def detect_annotations(
         "algorithm_used": algo,
         "detected_count": len(created),
         "items": [AnnotationResponse.model_validate(a).model_dump() for a in created],
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 检测辅助函数
+# ─────────────────────────────────────────────────────────────────────────────
+
+async def _read_wav_samples(
+    storage,
+    file_path: str,
+    media_file,
+    start_time: float = 0.0,
+    end_time: Optional[float] = None,
+) -> tuple:
+    """读取 WAV 文件并返回 (samples, sample_rate, duration)。
+
+    start_time/end_time 为可选裁剪区间（秒），end_time=None 表示读到文件末尾。
+    """
+    import wave as wave_module
+    import numpy as np
+
+    async with temp_local_file(storage, file_path) as local_path:
+        with wave_module.open(local_path, "r") as wf:
+            sample_rate = wf.getframerate()
+            n_frames = wf.getnframes()
+            n_channels = wf.getnchannels()
+            sampwidth = wf.getsampwidth()
+
+            if start_time > 0 or end_time is not None:
+                start_frame = int(start_time * sample_rate)
+                end_frame = n_frames if end_time is None else int(end_time * sample_rate)
+                start_frame = max(0, min(start_frame, n_frames))
+                end_frame = max(start_frame + 1, min(end_frame, n_frames))
+                wf.setpos(start_frame)
+                raw = wf.readframes(end_frame - start_frame)
+                duration = (end_frame - start_frame) / sample_rate
+            else:
+                raw = wf.readframes(n_frames)
+                duration = n_frames / sample_rate
+
+        dtype_map = {1: np.int8, 2: np.int16, 4: np.int32}
+        dtype = dtype_map.get(sampwidth, np.int16)
+        pcm = np.frombuffer(raw, dtype=dtype).astype(np.float64)
+        if n_channels > 1:
+            pcm = pcm[::n_channels]
+        max_val = np.max(np.abs(pcm)) or 1.0
+        samples = pcm / max_val
+
+    return samples, sample_rate, duration
+
+
+def _detect_on_signal(
+    sig: "np.ndarray",
+    work_sr: int,
+    duration: float,
+    file_type: str,
+    algorithm: str,
+    s1_only: bool = False,
+    min_bpm: "Optional[int]" = None,
+    max_bpm: "Optional[int]" = None,
+) -> list:
+    """对信号运行检测算法，返回标注 dict 列表。"""
+    if file_type in ("pcg", "audio"):
+        if algorithm == "neurokit2":
+            return pcg_detect_neurokit2(sig, work_sr, duration, s1_only=s1_only, min_bpm=min_bpm, max_bpm=max_bpm)
+        else:
+            return pcg_detect_scipy(sig, work_sr, duration, s1_only=s1_only, min_bpm=min_bpm, max_bpm=max_bpm)
+    else:  # ecg
+        if algorithm == "neurokit2":
+            return ecg_detect_neurokit2(sig, work_sr, duration)
+        elif algorithm == "wfdb":
+            return ecg_detect_wfdb(sig, work_sr, duration)
+        else:
+            return ecg_detect_scipy(sig, work_sr, duration)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 检测预览（不写入数据库）
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@router.post(
+    "/{file_id}/detect/preview",
+    responses={
+        404: {"model": ErrorResponse, "description": "文件不存在"},
+        400: {"model": ErrorResponse, "description": "不支持该文件类型的检测"},
+    },
+)
+async def detect_preview(
+    db: DatabaseSession,
+    file_id: str,
+    current_user: CurrentActiveUser,
+    algorithm: str = Query(
+        default="auto",
+        description="检测算法: auto | scipy | neurokit2 | wfdb",
+    ),
+    s1_only: bool = Query(
+        default=False,
+        description="PCG/Audio: 仅检测 S1",
+    ),
+):
+    """运行检测但仅返回结果预览，不写入数据库。
+
+    用户可在前端审核标注后，通过 POST /api/v1/annotations/accept 提交接受的标注。
+    """
+    from app.core.deps import require_project_role
+    import numpy as np
+    from scipy import signal as sp_signal
+
+    if algorithm not in ALGORITHMS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"不支持的算法 '{algorithm}'，可选: {', '.join(ALGORITHMS)}",
+        )
+
+    result = await db.execute(select(MediaFile).where(MediaFile.id == file_id))
+    media_file = result.scalar_one_or_none()
+    if not media_file:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="文件不存在")
+
+    await require_project_role(db, current_user, str(media_file.project_id), "member")
+
+    config = DETECT_CONFIG.get(media_file.file_type)
+    if not config:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"文件类型 '{media_file.file_type}' 暂不支持自动检测",
+        )
+
+    ext = os.path.splitext(media_file.file_path)[1].lower()
+    if ext not in (".wav",):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="自动检测仅支持 WAV 格式",
+        )
+
+    storage = await get_storage_for_file(db, media_file)
+
+    try:
+        samples, sample_rate, duration = await _read_wav_samples(storage, media_file.file_path, media_file)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"读取音频失败: {e}")
+
+    # 降采样
+    if media_file.file_type in ("pcg", "audio"):
+        target_sr = 2000
+    else:
+        target_sr = 500
+
+    if sample_rate != target_sr:
+        from math import gcd
+        g = gcd(sample_rate, target_sr)
+        sig = sp_signal.resample_poly(samples, target_sr // g, sample_rate // g)
+    else:
+        sig = samples.copy()
+
+    algo = algorithm
+    if algo == "auto":
+        algo = "neurokit2"
+
+    detected = _detect_on_signal(sig, target_sr, duration, media_file.file_type, algo, s1_only)
+
+    return {
+        "file_id": file_id,
+        "file_type": media_file.file_type,
+        "algorithm_used": algo,
+        "detected_count": len(detected),
+        "items": detected,
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 区域重检测
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@router.post(
+    "/{file_id}/detect/region",
+    responses={
+        404: {"model": ErrorResponse, "description": "文件不存在"},
+        400: {"model": ErrorResponse, "description": "不支持该文件类型的检测或参数无效"},
+    },
+)
+async def detect_region(
+    db: DatabaseSession,
+    file_id: str,
+    current_user: CurrentActiveUser,
+    start_time: float = Query(..., description="区域起始时间（秒）"),
+    end_time: float = Query(..., description="区域结束时间（秒）"),
+    algorithm: str = Query(
+        default="neurokit2",
+        description="检测算法: scipy | neurokit2 | wfdb",
+    ),
+    s1_only: bool = Query(
+        default=False,
+        description="PCG/Audio: 仅检测 S1",
+    ),
+    min_bpm: "Optional[int]" = Query(
+        default=None, ge=20, le=300,
+        description="预期最小心率 (BPM)，用于约束峰值检测",
+    ),
+    max_bpm: "Optional[int]" = Query(
+        default=None, ge=20, le=300,
+        description="预期最大心率 (BPM)，用于约束峰值检测",
+    ),
+):
+    """对指定时间区域重运行检测算法。
+
+    读取 WAV → 裁剪 [start_time, end_time] → 降采样 → 检测
+    → 返回标注（时间戳已映射回原始时间线）。
+    """
+    from app.core.deps import require_project_role
+    import numpy as np
+    from scipy import signal as sp_signal
+
+    if start_time >= end_time:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="start_time 必须小于 end_time",
+        )
+
+    if algorithm not in ALGORITHMS or algorithm == "auto":
+        algorithm = "neurokit2"
+
+    result = await db.execute(select(MediaFile).where(MediaFile.id == file_id))
+    media_file = result.scalar_one_or_none()
+    if not media_file:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="文件不存在")
+
+    await require_project_role(db, current_user, str(media_file.project_id), "member")
+
+    config = DETECT_CONFIG.get(media_file.file_type)
+    if not config:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"文件类型 '{media_file.file_type}' 暂不支持自动检测",
+        )
+
+    ext = os.path.splitext(media_file.file_path)[1].lower()
+    if ext not in (".wav",):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="自动检测仅支持 WAV 格式",
+        )
+
+    storage = await get_storage_for_file(db, media_file)
+
+    try:
+        samples, sample_rate, region_duration = await _read_wav_samples(
+            storage, media_file.file_path, media_file,
+            start_time=start_time, end_time=end_time,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"读取音频失败: {e}")
+
+    if len(samples) < sample_rate * 0.15:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="所选区域过短（<150ms），无法检测",
+        )
+
+    # 降采样
+    if media_file.file_type in ("pcg", "audio"):
+        target_sr = 2000
+    else:
+        target_sr = 500
+
+    if sample_rate != target_sr:
+        from math import gcd
+        g = gcd(sample_rate, target_sr)
+        sig = sp_signal.resample_poly(samples, target_sr // g, sample_rate // g)
+    else:
+        sig = samples.copy()
+
+    detected = _detect_on_signal(sig, target_sr, region_duration, media_file.file_type, algorithm, s1_only, min_bpm=min_bpm, max_bpm=max_bpm)
+
+    # 将检测结果的时间映射回原始时间线
+    for d in detected:
+        d["start_time"] = round(d["start_time"] + start_time, 4)
+        d["end_time"] = round(d["end_time"] + start_time, 4)
+
+    return {
+        "file_id": file_id,
+        "file_type": media_file.file_type,
+        "region": {
+            "start": start_time,
+            "end": end_time,
+        },
+        "algorithm_used": algorithm,
+        "detected_count": len(detected),
+        "items": detected,
     }
 
 
