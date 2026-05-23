@@ -685,6 +685,19 @@ class EcgSynthesizerV2:
             z[:] += _g(t, t_t_peak, sigma=t_sigma, amplitude=-2.0 * tz_amp * inv)
             x[:] += _g(t, t_t_peak, sigma=t_sigma, amplitude=-2.0 * tx_amp * inv)
 
+        # Hyperacute T-wave amplification (tall peaked T-waves, factor up to 1.8)
+        tw_amp_factor = st_state.t_wave_amplitude_factor
+        if tw_amp_factor > 1.05:
+            extra = tw_amp_factor - 1.0
+            y[:] += _g(t, t_t_peak, sigma=t_sigma * 0.7, amplitude=ty_amp * extra)
+            z[:] += _g(t, t_t_peak, sigma=t_sigma * 0.7, amplitude=tz_amp * extra)
+            x[:] += _g(t, t_t_peak, sigma=t_sigma * 0.7, amplitude=tx_amp * extra)
+        elif tw_amp_factor < 0.95:
+            # Flattened T-waves (old MI): scale down T region
+            y[:] *= (0.5 + 0.5 * tw_amp_factor)
+            z[:] *= (0.5 + 0.5 * tw_amp_factor)
+            x[:] *= (0.5 + 0.5 * tw_amp_factor)
+
         # Q-wave depth (subacute/old phases)
         q_depth = st_state.q_wave_depth_factor
         if q_depth > 0.01:
@@ -698,6 +711,7 @@ class EcgSynthesizerV2:
             r_scale = 1.0 - r_reduction * 0.5
             y[:] *= r_scale
             x[:] *= r_scale
+            z[:] *= r_scale
 
     def _apply_morph_overrides(
         self,
@@ -816,8 +830,10 @@ class EcgSynthesizerV2:
         if mv is None:
             return x, y, z
 
-        # Axis rotation in frontal plane (XY)
-        rot = mv.get_axis_rotation_matrix()
+        # Axis rotation: frontal plane (XY) + heart rotation (Z)
+        rot_xy = mv.get_axis_rotation_matrix()
+        rot_z = mv.get_z_rotation_matrix()
+        rot = rot_z @ rot_xy
         n = len(x)
         vcg_mat = np.vstack([x, y, z])  # (3, N)
         rotated = rot @ vcg_mat
@@ -829,10 +845,11 @@ class EcgSynthesizerV2:
         r_scale = mv.get_r_wave_scale()
         t_scale = mv.get_t_wave_scale()
 
-        # Apply scaling to rotated components
+        # Apply scaling: R-wave scale affects XY (main QRS axis),
+        # T-wave scale affects Z (anterior-posterior T-wave axis)
         ry_amp = ry * amp_scale * r_scale
         rx_amp = rx * amp_scale * r_scale
-        rz_amp = rz * amp_scale * r_scale
+        rz_amp = rz * amp_scale * r_scale * t_scale
 
         return rx_amp, ry_amp, rz_amp
 

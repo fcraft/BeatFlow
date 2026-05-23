@@ -396,6 +396,22 @@ class SimulationPipeline:
             mode = str(p.get("mode", "parametric"))
             if mode in ("parametric", "physical"):
                 self.set_pcg_engine_mode(mode)
+
+        # === ECG Morphology / STEMI / Variance (Phase 2) ===
+        elif cmd == "set_ecg_morph":
+            morph_name = str(p.get("morph", ""))
+            self.set_ecg_morph(morph_name)
+        elif cmd == "clear_ecg_morph":
+            self.clear_ecg_morph()
+        elif cmd == "start_stemi":
+            stenosis = float(p.get("stenosis", 0.8))
+            self.start_stemi(stenosis)
+        elif cmd == "resolve_stemi":
+            self.resolve_stemi()
+        elif cmd == "generate_ecg_variance":
+            seed = int(p.get("seed", 42))
+            self.generate_ecg_variance(seed)
+
         elif cmd == "reset":
             self._intent = InteractionState()
             self._transition.reset()
@@ -714,6 +730,10 @@ class SimulationPipeline:
                 temperature=self._modifiers.temperature,
             )
             self._modifiers.qt_adapted_ms = qt_ms
+
+        # --- ST evolution per-beat advancement ---
+        if self._st_evolution is not None and self._st_evolution.active:
+            self._st_evolution.update(rr_sec)
 
         # --- Layer 1: Parametric Conduction ---
         conduction: ConductionResult = self._conduction.propagate(rr_sec, self._modifiers)
