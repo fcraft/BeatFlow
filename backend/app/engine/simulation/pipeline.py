@@ -34,6 +34,7 @@ import numpy as np
 from app.engine.core.parametric_conduction import ParametricConductionNetwork
 from app.engine.core.ecg_synthesizer import EcgSynthesizerV2
 from app.engine.core.parametric_pcg import ParametricPcgSynthesizer
+from app.engine.core.physical_pcg import PhysicalPcgSynthesizer
 from app.engine.core.algebraic_hemo import AlgebraicHemodynamics
 from app.engine.core.types import (
     ConductionResult,
@@ -71,6 +72,8 @@ class SimulationPipeline:
         self._conduction: Optional[ParametricConductionNetwork] = None
         self._ecg_synth: Optional[EcgSynthesizerV2] = None
         self._pcg_synth: Optional[ParametricPcgSynthesizer] = None
+        self._pcg_synth_physical: Optional[PhysicalPcgSynthesizer] = None
+        self._pcg_engine_mode: str = 'parametric'
         self._hemo: Optional[AlgebraicHemodynamics] = None
 
         # Cross-cutting modules
@@ -525,6 +528,13 @@ class SimulationPipeline:
         if self._hemo is None:
             self._hemo = AlgebraicHemodynamics()
 
+    def set_pcg_engine_mode(self, mode: str) -> None:
+        """Switch PCG engine between 'parametric' and 'physical'."""
+        if mode not in ('parametric', 'physical'):
+            raise ValueError(f"Unknown PCG engine mode: {mode}. Use 'parametric' or 'physical'.")
+        self._pcg_engine_mode = mode
+        logger.info("PCG engine mode set to: %s", mode)
+
         # Cross-cutting modules
         if self._autonomic is None:
             from app.engine.modulation.autonomic_reflex import AutonomicReflexController
@@ -634,7 +644,14 @@ class SimulationPipeline:
         )
 
         # --- Layer 2b: PCG ---
-        pcg_frame: PcgFrame = self._pcg_synth.synthesize(conduction, self._modifiers)
+        if self._pcg_engine_mode == 'physical':
+            if self._pcg_synth_physical is None:
+                self._pcg_synth_physical = PhysicalPcgSynthesizer()
+            pcg_frame: PcgFrame = self._pcg_synth_physical.synthesize(conduction, self._modifiers)
+        else:
+            if self._pcg_synth is None:
+                self._pcg_synth = ParametricPcgSynthesizer()
+            pcg_frame: PcgFrame = self._pcg_synth.synthesize(conduction, self._modifiers)
 
         # --- Layer 3: Algebraic Hemodynamics ---
         hemo: HemodynamicState = self._hemo.compute(target_hr, rr_sec, self._modifiers)
