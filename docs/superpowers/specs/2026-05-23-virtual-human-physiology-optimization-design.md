@@ -408,3 +408,272 @@ Phase 1 (独立)
 | Phase 2 | 至少 8 种病理形态可切换；STEMI 时间演化可观察；不同虚拟人 ECG 有个体差异 |
 | Phase 3 | beta_blocker 给药后可见 HR↓→CO↓→反射性代偿的完整过程；运动时多系统协同变化 |
 | Phase 4 | 前端可看到每条 vitals 变化的触发原因和完整因果链 |
+
+---
+
+## 10. 验证方案
+
+生理仿真不同于普通 Web 应用的 CRUD 测试——光靠自动化测试无法验证"心音听起来真不真实"。验证策略分四个层次：**客观指标**、**生理不变量**、**回归对比**、**主观评估**。
+
+### 10.1 验证矩阵
+
+| 维度 | Phase 1 (PCG) | Phase 2 (ECG) | Phase 3 (级联) | Phase 4 (可视化) |
+|------|-------------|-------------|--------------|---------------|
+| 客观信号指标 | 频谱分析、THD、SNR | QRS 宽度、ST 偏移量、PR/QT 间期 | 响应延迟、稳态误差 | 事件完整性 |
+| 生理不变量 | S1 < S2 间隔 = LVET | III = II - I、aVR 负性 | MAP = DBP + (SBP-DBP)/3 | 因果链无环 |
+| 回归对比 | A/B 听感（参数化 vs 物理） | 形态快照对比 | 级联响应时间序列 | 事件流快照 |
+| 性能基准 | 单 beat 合成 <5ms | 单 beat 合成 <3ms | 因果图 step <1ms | 帧推送延迟 <5ms |
+| 主观评估 | 盲听听感评分 | 形态可辨识度 | 响应"自然感" | UI 易用性 |
+
+### 10.2 客观信号指标验证
+
+#### Phase 1: PCG 信号质量
+
+```python
+# 新增测试: backend/tests/test_pcg_quality.py
+
+class TestPcgSignalQuality:
+    """心音信号客观质量指标"""
+
+    def test_s1_s2_temporal_separation(self):
+        """S1-S2 间隔应符合 Weissler LVET 公式 ±5%"""
+        ...
+
+    def test_frequency_content_in_expected_band(self):
+        """心音频谱能量应集中在 20-800 Hz"""
+        ...
+
+    def test_s2_splitting_increases_with_inspiration(self):
+        """吸气时 A2-P2 分裂应比呼气时宽 20-50ms"""
+        ...
+
+    def test_murmur_does_not_mask_s1_s2(self):
+        """murmur severity=0.9 时 S1/S2 RMS 仍应 > murmur RMS 的 30%"""
+        ...
+
+    def test_channel_position_differentiation(self):
+        """4 个听诊位置的信号应对应不同的频率权重"""
+        ...
+
+    def test_thd_below_threshold(self):
+        """纯 S1 谐波失真 (THD) 应 <15%（真实心音通常 10-20%）"""
+        ...
+```
+
+**工具**: 使用 `scipy.signal` 的 `spectrogram`、`find_peaks`、`welch` 做频谱分析和峰值检测；使用 `scipy.stats` 的 `wasserstein_distance` 比较频谱分布。
+
+#### Phase 2: ECG 信号质量
+
+```python
+# 新增测试: backend/tests/test_ecg_quality.py
+
+class TestEcgSignalQuality:
+    """ECG 波形客观质量指标"""
+
+    def test_qrs_width_matches_morph_config(self):
+        """LBBB 时 QRS ≥120ms，正常时 QRS <110ms"""
+        ...
+
+    def test_einthoven_law_holds(self):
+        """III = II - I，误差 <0.01mV"""
+        ...
+
+    def test_precordial_r_wave_progression(self):
+        """正常时 V1→V6 R/S 比单调递增"""
+        ...
+
+    def test_avr_negative_qrs(self):
+        """正常窦律时 aVR QRS 主波为负"""
+        ...
+
+    def test_st_elevation_evolves_over_time(self):
+        """STEMI 超急性期→急性期→亚急性期→陈旧期 ST 段变化符合时间线"""
+        ...
+
+    def test_morph_variance_produces_different_ecgs(self):
+        """两个不同 MorphVarianceConfig 生成的 ECG 应有可测量的差异"""
+        ...
+```
+
+### 10.3 生理不变量验证
+
+#### Phase 3: 级联响应不变量
+
+生理仿真存在大量必须满足的不变量和约束。这些测试验证无论输入如何变化，核心生理定律始终成立：
+
+```python
+# 新增测试: backend/tests/test_physiology_invariants.py
+
+class TestPhysiologyInvariants:
+    """生理不变量 —— 无论输入如何，这些约束必须成立"""
+
+    # --- 循环系统约束 ---
+    def test_map_equals_dbp_plus_third_pulse_pressure(self):
+        """MAP = DBP + (SBP-DBP)/3，误差 <5mmHg"""
+        ...
+
+    def test_cardiac_output_equals_hr_times_sv(self):
+        """CO(L/min) = HR(bpm) × SV(mL) / 1000"""
+        ...
+
+    def test_pulse_pressure_positive(self):
+        """SBP - DBP > 0（任何情况下脉压必须为正）"""
+        ...
+
+    def test_baroreflex_negative_feedback(self):
+        """MAP 下降 → 交感↑；MAP 上升 → 交感↓（负反馈）"""
+        ...
+
+    # --- 呼吸约束 ---
+    def test_minute_ventilation_equals_rr_times_tidal_volume(self):
+        """MV = RR × Vt"""
+        ...
+
+    def test_chemoreflex_co2_drive(self):
+        """PaCO2↑ → RR↑（高碳酸血症呼吸驱动）"""
+        ...
+
+    # --- 药理约束 ---
+    def test_beta_blocker_reduces_hr_and_contractility(self):
+        """beta_blocker 给药后 HR↓ 且 contractility↓"""
+        ...
+
+    def test_drug_clearance_reduces_concentration(self):
+        """给药停止后药物浓度随时间衰减"""
+        ...
+
+    def test_digoxin_toxicity_with_hypokalemia(self):
+        """低钾 (<3.5) 时等效地高辛浓度应升高"""
+        ...
+
+    # --- 极限状态约束 ---
+    def test_no_negative_volumes_or_pressures(self):
+        """任何情况下 SV/CO/EDV 不应为负"""
+        ...
+
+    def test_hr_within_physiological_range(self):
+        """HR 应在 20-300 bpm 范围内"""
+        ...
+
+    def test_spo2_bounded_0_to_100(self):
+        """SpO2 永远在 [0, 100] 范围内"""
+        ...
+```
+
+**测试策略**: 对每种状态组合（运动+药物+电解质+情绪）采样 1000 个 beat，验证所有不变量始终成立。利用 hypothesis 库做 property-based testing，自动发现边界 case。
+
+### 10.4 回归对比验证
+
+由于改动是对现有模块的增强，需要确保不会引入退化。
+
+#### 快照对比测试
+
+```python
+# 新增测试: backend/tests/test_regression_snapshots.py
+
+class TestRegressionSnapshots:
+    """回归快照 —— 确保改动不破坏现有行为"""
+
+    def test_parametric_pcg_still_works_as_fallback(self):
+        """旧的 ParametricPcgSynthesizer 输出应与改动前一致"""
+        ...
+
+    def test_12_lead_ecg_output_format_unchanged(self):
+        """EcgFrame 结构不变（字段名、类型、sample_rate）"""
+        ...
+
+    def test_vitals_dict_keys_unchanged(self):
+        """vitals 字典的 key 集合只增不减"""
+        ...
+
+    def test_ws_signal_frame_schema_compatible(self):
+        """WebSocket 推送帧的 JSON schema 向后兼容"""
+        ...
+
+    def test_beat_loop_throughput_unchanged(self):
+        """_run_one_beat() 吞吐量不应下降超过 10%"""
+        ...
+```
+
+**快照存储**: 改动前录制一组标准场景（rest/walk/run/AF/STEMI）下 10 秒的 vitals 序列和信号片段到 `backend/tests/snapshots/`，改动后对比。
+
+### 10.5 性能基准验证
+
+WebSocket 实时推流要求每 beat 生成必须快于 beat 间隔（静息 HR=72 时 beat 间隔 ≈833ms）。需要建立性能基准并在每次变更后验证。
+
+```python
+# 新增测试: backend/tests/test_performance_benchmarks.py
+
+class TestPerformanceBenchmarks:
+    """性能基准 —— 确保实时推流不发生 underrun"""
+
+    def test_single_beat_generation_under_50ms(self):
+        """_run_one_beat() 平均耗时 <50ms（留 16× 余量）"""
+        ...
+
+    def test_causal_graph_step_under_5ms(self):
+        """PhysiologyCausalGraph.step() 耗时 <5ms"""
+        ...
+
+    def test_pcg_synthesis_under_20ms(self):
+        """PhysicalPcgSynthesizer.synthesize() 耗时 <20ms"""
+        ...
+
+    def test_memory_no_leak_over_10000_beats(self):
+        """10000 beat 连续生成无内存泄漏（增长 <5MB）"""
+        ...
+
+    def test_streaming_buffer_never_depletes(self):
+        """连续运行 60s 后 stream buffer 不应出现 underrun"""
+        ...
+```
+
+**基准环境**: 运行 `backend/tests/` 时自动记录耗时到 `backend/tests/benchmarks.json`，CI 中对比变化。
+
+### 10.6 主观评估方案
+
+客观指标只能验证"信号没坏"，无法验证"听感好不好"。需要在开发中引入主观评估。
+
+#### Phase 1: PCG 听感评估
+
+1. **A/B 盲听测试**: 导出 parametric vs physical 模式下的 WAV 文件（相同生理状态），开发者盲听评分（1-5 分）
+2. **病理可辨识度**: 导出 6 种 murmur 类型的心音，请医学背景人员辨识 murmur 类型
+3. **位置可区分度**: 导出同一 beat 的 4 听诊位置信号，验证听感上位置差异是否明显
+
+#### Phase 2: ECG 形态评估
+
+1. **形态辨识**: 导出 8 种病理形态的 12 导联 ECG 图像，由了解 ECG 的人员标注"能否识别出特征"
+2. **个体差异可感知**: 生成 5 个不同 MorphVarianceConfig 的 ECG，确认波形有可见差异
+
+#### Phase 3: 响应自然感
+
+1. **时间序列审查**: 导出"静息→慢跑→静息"、"给药→起效→洗脱"的 vitals 时间序列图，审查曲线是否平滑自然
+2. **医师反馈**: 将关键场景的 vitals 曲线和 ECG 给医学背景人员评审
+
+### 10.7 验证工具链
+
+| 工具 | 用途 | 适用阶段 |
+|------|------|---------|
+| `pytest` + `pytest-asyncio` | 后端单元测试 | Phase 1-4 |
+| `hypothesis` | Property-based testing，自动生成边界输入 | Phase 3 |
+| `scipy.signal` | 频谱分析、滤波验证、峰值检测 | Phase 1-2 |
+| `numpy.testing` | 浮点数组对比（`assert_allclose`） | Phase 1-2 |
+| `soundfile` | 导出 PCG WAV 用于人工听评 | Phase 1 |
+| `matplotlib` | 生成 ECG 形态图和 vitals 曲线 | Phase 1-3 |
+| `vitest` + `@vue/test-utils` | 前端组件测试 | Phase 4 |
+| `pytest-benchmark` | 性能基准记录和对比 | Phase 1-3 |
+
+### 10.8 测试文件清单
+
+| 测试文件 | 说明 |
+|---------|------|
+| `backend/tests/test_pcg_quality.py` | PCG 客观信号质量 |
+| `backend/tests/test_ecg_quality.py` | ECG 客观信号质量 |
+| `backend/tests/test_physiology_invariants.py` | 生理不变量（hypothesis） |
+| `backend/tests/test_regression_snapshots.py` | 回归快照对比 |
+| `backend/tests/test_performance_benchmarks.py` | 性能基准 |
+| `backend/tests/snapshots/` | 快照数据目录 |
+| `backend/tests/benchmarks.json` | 性能基准数据 |
+| `frontend/src/components/ui/__tests__/CausalityPanel.spec.ts` | 因果面板组件测试 |
+| `tools/export_pcg_wav.py` | PCG WAV 导出脚本（用于人工听评） |
+| `tools/export_ecg_plot.py` | ECG 波形图导出脚本（用于形态审查） |
