@@ -14,9 +14,10 @@ const emit = defineEmits<{
   (e: 'toggle-pv'): void
   (e: 'toggle-ap'): void
   (e: 'toggle-wiggers'): void
+  (e: 'toggle-causal'): void
 }>()
 
-defineProps<{ showPv: boolean; showAp: boolean; showWiggers: boolean }>()
+defineProps<{ showPv: boolean; showAp: boolean; showWiggers: boolean; showCausal?: boolean }>()
 </script>
 
 <template>
@@ -47,6 +48,7 @@ defineProps<{ showPv: boolean; showAp: boolean; showWiggers: boolean }>()
                 { key: 'pv', label: 'PV', active: showPv, color: '#007AFF', event: 'toggle-pv' },
                 { key: 'ap', label: 'AP', active: showAp, color: '#FF3B30', event: 'toggle-ap' },
                 { key: 'wig', label: 'Wiggers', active: showWiggers, color: '#34C759', event: 'toggle-wiggers' },
+                { key: 'cx', label: 'CX', active: showCausal || false, color: '#AF52DE', event: 'toggle-causal' },
               ]" :key="item.key"
               class="h-6 px-2 text-[10px] font-semibold rounded-full border transition-all duration-200"
               :class="item.active

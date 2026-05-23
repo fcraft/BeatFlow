@@ -18,6 +18,7 @@ export interface DecodedSignalFrame {
   beatAnnotations: Array<Record<string, unknown>>
   conductionTrend?: Array<Record<string, unknown>>
   ecgLeads?: Record<string, Float32Array>
+  causalEvents?: Array<Record<string, unknown>>
 }
 
 export function decodeSignalFrame(buffer: ArrayBuffer): DecodedSignalFrame {
@@ -64,6 +65,7 @@ export function decodeSignalFrame(buffer: ArrayBuffer): DecodedSignalFrame {
   let beatAnnotations: Array<Record<string, unknown>> = []
   let conductionTrend: Array<Record<string, unknown>> | undefined
   let leadNames: string[] | undefined
+  let causalEvents: Array<Record<string, unknown>> | undefined
 
   if (jsonLen > 0) {
     const jsonBytes = new Uint8Array(buffer, offset, jsonLen)
@@ -75,6 +77,7 @@ export function decodeSignalFrame(buffer: ArrayBuffer): DecodedSignalFrame {
     beatAnnotations = payload.a ?? []
     conductionTrend = payload.t
     leadNames = payload.l
+    causalEvents = payload.c
   }
 
   // Lead binary blocks
@@ -105,5 +108,6 @@ export function decodeSignalFrame(buffer: ArrayBuffer): DecodedSignalFrame {
     beatAnnotations,
     conductionTrend,
     ecgLeads,
+    causalEvents,
   }
 }

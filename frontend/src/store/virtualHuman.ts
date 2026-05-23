@@ -648,6 +648,11 @@ export const useVirtualHumanStore = defineStore('virtualHuman', () => {
       }
     }
 
+    // Phase 4: Causal events
+    if (Array.isArray(frame.causalEvents) && frame.causalEvents.length > 0) {
+      causalEvents.value = [...frame.causalEvents, ...causalEvents.value].slice(0, 200)
+    }
+
     // 6. Dispatch PCG callbacks
     const pcgSamples = Array.from(frame.pcg)
     const pcgChunk: SignalChunk = {

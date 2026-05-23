@@ -44,12 +44,14 @@ defineProps<{
   showPv: boolean
   showAp: boolean
   showWiggers: boolean
+  showCausal?: boolean
 }>()
 
 const emit = defineEmits<{
   (e: 'toggle-pv'): void
   (e: 'toggle-ap'): void
   (e: 'toggle-wiggers'): void
+  (e: 'toggle-causal'): void
   (e: 'open-controls'): void
 }>()
 
@@ -82,10 +84,11 @@ const beatKindColors: Record<string, string> = {
 
     <!-- Waveform toolbar -->
     <CmdWaveformToolbar
-      :show-pv="showPv" :show-ap="showAp" :show-wiggers="showWiggers"
+      :show-pv="showPv" :show-ap="showAp" :show-wiggers="showWiggers" :show-causal="showCausal || false"
       @toggle-pv="emit('toggle-pv')"
       @toggle-ap="emit('toggle-ap')"
-      @toggle-wiggers="emit('toggle-wiggers')" />
+      @toggle-wiggers="emit('toggle-wiggers')"
+      @toggle-causal="emit('toggle-causal')" />
 
     <!-- ═══ Mobile: ECG/PCG flex fill ═══ -->
     <div class="cmd-mobile-only flex flex-col flex-1 min-h-0 gap-1">

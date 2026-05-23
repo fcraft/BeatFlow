@@ -101,6 +101,7 @@ def encode_signal_frame(
     server_elapsed_sec: float,
     ecg_leads: dict[str, list[float]] | None = None,
     conduction_trend: list[dict] | None = None,
+    causal_events: list[dict] | None = None,
 ) -> bytes:
     encoder = BinaryFrameEncoder()
 
@@ -119,6 +120,8 @@ def encode_signal_frame(
     if conduction_trend:
         flags |= FLAG_HAS_TREND
         json_payload["t"] = conduction_trend
+    if causal_events:
+        json_payload["c"] = causal_events
 
     # Header (20 bytes): u8, u8, u32, u32, u32, u16, u16, u16
     header = struct.pack(

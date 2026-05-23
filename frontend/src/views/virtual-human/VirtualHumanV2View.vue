@@ -15,7 +15,7 @@
  */
 import { ref, onMounted, onUnmounted, onBeforeUnmount, reactive, toRef } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { LogOut } from 'lucide-vue-next'
+import { LogOut, X } from 'lucide-vue-next'
 import { useVirtualHumanStore } from '@/store/virtualHuman'
 import { useConnectionStore } from '@/store/connection'
 import { useAuthStore } from '@/store/auth'
@@ -36,6 +36,7 @@ import CmdMobileVitals from '@/components/virtual-human-v2/CmdMobileVitals.vue'
 import PvLoopChart from '@/components/virtual-human/PvLoopChart.vue'
 import ActionPotentialChart from '@/components/virtual-human/ActionPotentialChart.vue'
 import CardiacCycleChart from '@/components/virtual-human/CardiacCycleChart.vue'
+import CausalityPanel from '@/components/ui/CausalityPanel.vue'
 
 const store = useVirtualHumanStore()
 const connectionStore = useConnectionStore()
@@ -51,6 +52,7 @@ const showControlOverlay = ref(false)
 const showPvLoop = ref(false)
 const showApChart = ref(false)
 const showCcChart = ref(false)
+const showCausalPanel = ref(false)
 
 // Nav menu
 const showNavMenu = ref(false)
@@ -120,10 +122,11 @@ onUnmounted(() => {
         </div>
         <CmdWaveflowPanel v-else
           :alarms="alarmSystem.activeAlarms.value"
-          :show-pv="showPvLoop" :show-ap="showApChart" :show-wiggers="showCcChart"
+          :show-pv="showPvLoop" :show-ap="showApChart" :show-wiggers="showCcChart" :show-causal="showCausalPanel"
           @toggle-pv="showPvLoop = !showPvLoop"
           @toggle-ap="showApChart = !showApChart"
           @toggle-wiggers="showCcChart = !showCcChart"
+          @toggle-causal="showCausalPanel = !showCausalPanel"
           @open-controls="showControlOverlay = true" />
       </div>
 
@@ -146,6 +149,24 @@ onUnmounted(() => {
     <PvLoopChart v-if="showPvLoop" class="cmd-desktop-only" @close="showPvLoop = false" />
     <ActionPotentialChart v-if="showApChart" class="cmd-desktop-only" @close="showApChart = false" />
     <CardiacCycleChart v-if="showCcChart" class="cmd-desktop-only" @close="showCcChart = false" />
+
+    <!-- Phase 4: Causality floating panel -->
+    <Teleport to="body">
+      <div
+        v-if="showCausalPanel && store.connected"
+        class="fixed top-12 right-3 w-80 max-h-[65vh] overflow-y-auto z-[100]
+               bg-gray-950/95 backdrop-blur-xl border border-white/[0.08] rounded-xl
+               shadow-2xl p-3.5"
+      >
+        <div class="flex items-center justify-between mb-2.5">
+          <span class="text-xs font-semibold text-white/70">Causal Trace</span>
+          <button class="text-white/30 hover:text-white/70 transition-colors" @click="showCausalPanel = false">
+            <X :size="14" />
+          </button>
+        </div>
+        <CausalityPanel :events="store.causalEvents" :max-visible="6" />
+      </div>
+    </Teleport>
 
     <!-- Navigation Menu (Teleport) -->
     <Teleport to="body">

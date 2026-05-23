@@ -1077,10 +1077,18 @@ class SimulationPipeline:
         self._prev_modifiers_snapshot = snapshot
 
         if prev is None:
-            return  # First beat, no baseline
+            # First beat: record cold-start as initial state
+            tracker.record_chain(
+                'simulation', 'initialization',
+                [('Heart Rate', 'vitals.heart_rate', None, snapshot['hr'],
+                  f'Initial HR: {snapshot["hr"]:.0f} BPM'),
+                 ('Systolic BP', 'vitals.systolic_bp', None, snapshot['sbp'],
+                  f'Initial SBP: {snapshot["sbp"]:.0f} mmHg')],
+            )
+            return
 
-        # Record significant changes (>5% deviation)
-        threshold = 0.05
+        # Record significant changes (>3% deviation or >0.03 absolute for symp/sa)
+        threshold = 0.03
         changes: list[tuple[str, str, float, float, str]] = []
 
         if abs(snapshot['hr'] - prev['hr']) / max(1, prev['hr']) > threshold:
@@ -1234,6 +1242,7 @@ class SimulationPipeline:
                 if self._use_binary_protocol and self._send_binary_callback:
                     from app.engine.ws_binary_protocol import encode_signal_frame
                     vitals_delta = self._binary_encoder.compute_vitals_delta(current_vitals)
+                    causal_events_data = self._causal_tracker.recent(20)
                     frame_bytes = encode_signal_frame(
                         seq=current_seq,
                         ecg_samples=ecg_chunk, pcg_samples=pcg_chunk,
@@ -1243,6 +1252,7 @@ class SimulationPipeline:
                         server_elapsed_sec=server_elapsed,
                         ecg_leads=ecg_leads if ecg_leads else None,
                         conduction_trend=conduction_trend_data,
+                        causal_events=causal_events_data if causal_events_data else None,
                     )
                     try:
                         await self._send_binary_callback(frame_bytes)
