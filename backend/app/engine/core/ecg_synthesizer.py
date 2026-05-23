@@ -62,12 +62,15 @@ class EcgSynthesizerV2:
 
     def __init__(self, sample_rate: int = 500) -> None:
         self.sample_rate = sample_rate
-        # Fractional sample accumulator to eliminate per-beat int() truncation drift
         self._frac_acc: float = 0.0
-        # T-wave carryover buffer per VCG component for P-on-T fusion
         self._t_wave_carryover_x: NDArray[np.float64] | None = None
         self._t_wave_carryover_y: NDArray[np.float64] | None = None
         self._t_wave_carryover_z: NDArray[np.float64] | None = None
+
+        # Phase 2: optional morphology & variance modules
+        self.morph_variance: object | None = None     # MorphVarianceConfig
+        self.st_evolution: object | None = None        # STEvolutionModel
+        self.active_morph: str | None = None           # Morphology name from library
 
     # ------------------------------------------------------------------
     # Public API
@@ -177,8 +180,8 @@ class EcgSynthesizerV2:
     # Sinus VCG (also SVT / AF)
     # ------------------------------------------------------------------
 
-    @staticmethod
     def _build_sinus_vcg(
+        self,
         t: NDArray[np.float64],
         n: int,
         conduction: ConductionResult,
@@ -300,28 +303,41 @@ class EcgSynthesizerV2:
             y += _g(t, u_time, sigma=0.050, amplitude=u_amp)
             x += _g(t, u_time, sigma=0.050, amplitude=u_amp * 0.4)
 
-        # --- Ischemia ST-segment modification ---
-        if ischemia_level > 0.05:
+        # --- Ischemia / ST evolution modification ---
+        if self.st_evolution is not None:
+            st_state = self.st_evolution.get_current_state()
+            if st_state.phase != 'none':
+                self._apply_st_evolution(
+                    t, x, y, z, t_qrs, t_t_peak, st_state,
+                    ty_amp, tz_amp, tx_amp, t_sigma, _g,
+                )
+        elif ischemia_level > 0.05:
             st_start = t_qrs + 0.040
             st_end = t_t_peak - 0.040
             st_center = (st_start + st_end) / 2.0
-            st_sigma = max(0.020, (st_end - st_start) / 3.0)
+            st_sigma_local = max(0.020, (st_end - st_start) / 3.0)
             st_depression = -0.30 * ischemia_level
 
-            # ST depression primarily in Y and Z components
-            # Y → affects inferior leads (II, III, aVF)
-            y += _g(t, st_center, sigma=st_sigma, amplitude=st_depression)
-            # Z → affects anterior/precordial leads (V1-V4)
-            z += _g(t, st_center, sigma=st_sigma, amplitude=st_depression * 0.8)
-            # X → affects lateral leads (I, aVL, V5-V6)
-            x += _g(t, st_center, sigma=st_sigma, amplitude=st_depression * 0.5)
+            y += _g(t, st_center, sigma=st_sigma_local, amplitude=st_depression)
+            z += _g(t, st_center, sigma=st_sigma_local, amplitude=st_depression * 0.8)
+            x += _g(t, st_center, sigma=st_sigma_local, amplitude=st_depression * 0.5)
 
-            # T-wave inversion in ischemia
             if ischemia_level > 0.3:
                 inv = min(1.0, (ischemia_level - 0.3) / 0.5)
                 y += _g(t, t_t_peak, sigma=t_sigma, amplitude=-2.0 * ty_amp * inv)
                 z += _g(t, t_t_peak, sigma=t_sigma, amplitude=-2.0 * tz_amp * inv)
                 x += _g(t, t_t_peak, sigma=t_sigma, amplitude=-2.0 * tx_amp * inv)
+
+        # --- Active morphology QRS/T-wave overrides ---
+        if self.active_morph is not None:
+            self._apply_morph_overrides(
+                t, x, y, z, t_qrs, t_t_peak, t_sigma,
+                ty_amp, tz_amp, tx_amp, _g,
+            )
+
+        # --- Individual variance: axis rotation & amplitude scaling ---
+        if self.morph_variance is not None:
+            x, y, z = self._apply_individual_variance(x, y, z, ty_amp)
 
         # --- Normalize: scale Y so R-peak ≈ _MV_SCALE ---
         y, scale = EcgSynthesizerV2._normalize_vcg_primary(y)
@@ -624,6 +640,189 @@ class EcgSynthesizerV2:
             scale = 1.0
 
         return y_comp * scale, scale
+
+    # ------------------------------------------------------------------
+    # Phase 2 helpers — morphology, ST evolution, individual variance
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _apply_st_evolution(
+        t: NDArray[np.float64],
+        x: NDArray[np.float64], y: NDArray[np.float64], z: NDArray[np.float64],
+        t_qrs: float, t_t_peak: float,
+        st_state, ty_amp: float, tz_amp: float, tx_amp: float,
+        t_sigma: float, _g,
+    ) -> None:
+        """Apply STEvolutionState to VCG components (mutates x, y, z in-place)."""
+        st_start = t_qrs + 0.040
+        st_end = t_t_peak - 0.040
+        if st_end <= st_start:
+            return
+        st_center = (st_start + st_end) / 2.0
+        st_sigma_local = max(0.020, (st_end - st_start) / 3.0)
+
+        elev = st_state.st_elevation_mv
+        if abs(elev) > 0.001:
+            y[:] += _g(t, st_center, sigma=st_sigma_local, amplitude=elev)
+            z[:] += _g(t, st_center, sigma=st_sigma_local, amplitude=elev * 0.8)
+            x[:] += _g(t, st_center, sigma=st_sigma_local, amplitude=elev * 0.5)
+
+        inv = st_state.t_wave_inversion
+        if inv > 0.01:
+            y[:] += _g(t, t_t_peak, sigma=t_sigma, amplitude=-2.0 * ty_amp * inv)
+            z[:] += _g(t, t_t_peak, sigma=t_sigma, amplitude=-2.0 * tz_amp * inv)
+            x[:] += _g(t, t_t_peak, sigma=t_sigma, amplitude=-2.0 * tx_amp * inv)
+
+        # Q-wave depth (subacute/old phases)
+        q_depth = st_state.q_wave_depth_factor
+        if q_depth > 0.01:
+            y[:] += _g(t, t_qrs - 0.005, sigma=0.006, amplitude=-0.40 * q_depth)
+            z[:] += _g(t, t_qrs + 0.002, sigma=0.006, amplitude=-0.30 * q_depth)
+            x[:] += _g(t, t_qrs - 0.003, sigma=0.005, amplitude=-0.20 * q_depth)
+
+        r_reduction = st_state.r_wave_reduction
+        if r_reduction > 0.01:
+            # Reduce R-wave amplitude proportionally
+            r_scale = 1.0 - r_reduction * 0.5
+            y[:] *= r_scale
+            x[:] *= r_scale
+
+    def _apply_morph_overrides(
+        self,
+        t: NDArray[np.float64],
+        x: NDArray[np.float64], y: NDArray[np.float64], z: NDArray[np.float64],
+        t_qrs: float, t_t_peak: float, t_sigma: float,
+        ty_amp: float, tz_amp: float, tx_amp: float,
+        _g,
+    ) -> None:
+        """Apply active PathologicalMorphConfig overrides to VCG components.
+
+        QRS overrides REPLACE the QRS within its time window (the rest of the
+        signal — P-wave, T-wave, ST — is preserved).  T-wave and ST overrides
+        are ADDITIVE on top of existing components.
+        """
+        from app.engine.core.ecg_morph_library import get_morph_config
+
+        cfg = get_morph_config(self.active_morph) if self.active_morph else None
+        if cfg is None:
+            return
+        _g_local = self._gaussian
+
+        # --- QRS overrides: replace within QRS time window ---
+        qo = cfg.qrs
+        if qo is not None and (qo.x_amplitudes is not None
+                               or qo.y_amplitudes is not None
+                               or qo.z_amplitudes is not None):
+            # Zero only the QRS window (t_qrs - 30ms to t_qrs + 80ms)
+            sr = _CELL_RATE
+            qrs_start_idx = max(0, int((t_qrs - 0.030) * sr))
+            qrs_end_idx = min(len(x), int((t_qrs + 0.080) * sr))
+            for arr in (x, y, z):
+                arr[qrs_start_idx:qrs_end_idx] = 0.0
+
+            # Rebuild QRS with pathological gaussians
+            def _rebuild_qrs(arr, amps, sigmas, offsets, extra_amps, extra_sigmas, extra_timing):
+                if amps is not None:
+                    _sigmas = sigmas or [0.005] * len(amps)
+                    _offsets = offsets or [0.0] * len(amps)
+                    for amp, sig, off in zip(amps, _sigmas, _offsets):
+                        arr += _g_local(t, t_qrs + off, sigma=sig, amplitude=amp)
+                for amp, sig, off in zip(extra_amps, extra_sigmas, extra_timing):
+                    arr += _g_local(t, t_qrs + off, sigma=sig, amplitude=amp)
+
+            _rebuild_qrs(x, qo.x_amplitudes, qo.x_sigmas, qo.x_timing_offsets,
+                         qo.x_extra_amps, qo.x_extra_sigmas, qo.x_extra_timing)
+            _rebuild_qrs(y, qo.y_amplitudes, qo.y_sigmas, qo.y_timing_offsets,
+                         qo.y_extra_amps, qo.y_extra_sigmas, qo.y_extra_timing)
+            _rebuild_qrs(z, qo.z_amplitudes, qo.z_sigmas, qo.z_timing_offsets,
+                         qo.z_extra_amps, qo.z_extra_sigmas, qo.z_extra_timing)
+
+        # Extra gaussians only (no amplitude override — additive QRS mod)
+        elif qo is not None:
+            for amp, sig, off in zip(qo.x_extra_amps, qo.x_extra_sigmas, qo.x_extra_timing):
+                x[:] += _g_local(t, t_qrs + off, sigma=sig, amplitude=amp)
+            for amp, sig, off in zip(qo.y_extra_amps, qo.y_extra_sigmas, qo.y_extra_timing):
+                y[:] += _g_local(t, t_qrs + off, sigma=sig, amplitude=amp)
+            for amp, sig, off in zip(qo.z_extra_amps, qo.z_extra_sigmas, qo.z_extra_timing):
+                z[:] += _g_local(t, t_qrs + off, sigma=sig, amplitude=amp)
+
+        # --- ST-segment overrides (additive) ---
+        if cfg.st_segment is not None and t_t_peak > t_qrs + 0.05:
+            st = cfg.st_segment
+            st_start = t_qrs + 0.040
+            st_end = t_t_peak - 0.040
+            st_center = (st_start + st_end) / 2.0
+            st_sig = st.st_sigma or max(0.020, (st_end - st_start) / 3.0)
+            if abs(st.y_depression) > 0.001:
+                y[:] += _g_local(t, st_center, sigma=st_sig, amplitude=st.y_depression)
+            if abs(st.z_depression) > 0.001:
+                z[:] += _g_local(t, st_center, sigma=st_sig, amplitude=st.z_depression)
+            if abs(st.x_depression) > 0.001:
+                x[:] += _g_local(t, st_center, sigma=st_sig, amplitude=st.x_depression)
+
+        # --- T-wave overrides (additive delta) ---
+        if cfg.t_wave is not None:
+            tw = cfg.t_wave
+            ts = tw.t_sigma or t_sigma
+            ta_y = tw.y_amplitude if tw.y_amplitude is not None else 0.0
+            ta_x = tw.x_amplitude if tw.x_amplitude is not None else 0.0
+            ta_z = tw.z_amplitude if tw.z_amplitude is not None else 0.0
+            tt_y = tw.y_tail_amp if tw.y_tail_amp is not None else 0.0
+            tt_x = tw.x_tail_amp if tw.x_tail_amp is not None else 0.0
+            tt_z = tw.z_tail_amp if tw.z_tail_amp is not None else 0.0
+
+            if abs(ta_y) > 0.0001:
+                y[:] += _g_local(t, t_t_peak, sigma=ts, amplitude=ta_y)
+            if abs(tt_y) > 0.0001:
+                y[:] += _g_local(t, t_t_peak + 0.080, sigma=0.040, amplitude=tt_y)
+            if abs(ta_x) > 0.0001:
+                x[:] += _g_local(t, t_t_peak, sigma=ts, amplitude=ta_x)
+            if abs(tt_x) > 0.0001:
+                x[:] += _g_local(t, t_t_peak + 0.080, sigma=0.040, amplitude=tt_x)
+            if abs(ta_z) > 0.0001:
+                z[:] += _g_local(t, t_t_peak, sigma=ts, amplitude=ta_z)
+            if abs(tt_z) > 0.0001:
+                z[:] += _g_local(t, t_t_peak + 0.080, sigma=0.040, amplitude=tt_z)
+
+            if tw.y_amp2 is not None:
+                t2 = t_t_peak + (tw.t_offset2 or 0.100)
+                y[:] += _g_local(t, t2, sigma=ts, amplitude=tw.y_amp2)
+            if tw.x_amp2 is not None:
+                t2 = t_t_peak + (tw.t_offset2 or 0.100)
+                x[:] += _g_local(t, t2, sigma=ts, amplitude=tw.x_amp2)
+            if tw.z_amp2 is not None:
+                t2 = t_t_peak + (tw.t_offset2 or 0.100)
+                z[:] += _g_local(t, t2, sigma=ts, amplitude=tw.z_amp2)
+
+    def _apply_individual_variance(
+        self,
+        x: NDArray[np.float64], y: NDArray[np.float64], z: NDArray[np.float64],
+        ty_amp: float,
+    ) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
+        """Apply MorphVarianceConfig: axis rotation and amplitude scaling."""
+        mv = self.morph_variance
+        if mv is None:
+            return x, y, z
+
+        # Axis rotation in frontal plane (XY)
+        rot = mv.get_axis_rotation_matrix()
+        n = len(x)
+        vcg_mat = np.vstack([x, y, z])  # (3, N)
+        rotated = rot @ vcg_mat
+
+        rx, ry, rz = rotated[0], rotated[1], rotated[2]
+
+        # Amplitude scaling (chest wall, sex, age)
+        amp_scale = mv.get_amplitude_scale()
+        r_scale = mv.get_r_wave_scale()
+        t_scale = mv.get_t_wave_scale()
+
+        # Apply scaling to rotated components
+        ry_amp = ry * amp_scale * r_scale
+        rx_amp = rx * amp_scale * r_scale
+        rz_amp = rz * amp_scale * r_scale
+
+        return rx_amp, ry_amp, rz_amp
 
     # ------------------------------------------------------------------
     # Utility helpers

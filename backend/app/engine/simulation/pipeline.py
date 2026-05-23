@@ -86,6 +86,11 @@ class SimulationPipeline:
 
         # Exercise physiology
         self._exercise_model: Any = None
+
+        # Phase 2: ECG morphology & individual variance
+        self._morph_variance: Any = None        # MorphVarianceConfig
+        self._st_evolution: Any = None           # STEvolutionModel
+        self._ecg_active_morph: str | None = None  # Active morphology name
         self._exercise_duration_sec: float = 0.0
         self._high_exercise_duration_sec: float = 0.0
 
@@ -523,6 +528,13 @@ class SimulationPipeline:
             self._conduction = ParametricConductionNetwork()
         if self._ecg_synth is None:
             self._ecg_synth = EcgSynthesizerV2(sample_rate=ECG_SR)
+            # Phase 2: attach morphology & variance modules if configured
+            if self._morph_variance is not None:
+                self._ecg_synth.morph_variance = self._morph_variance
+            if self._st_evolution is not None:
+                self._ecg_synth.st_evolution = self._st_evolution
+            if self._ecg_active_morph is not None:
+                self._ecg_synth.active_morph = self._ecg_active_morph
         if self._pcg_synth is None:
             self._pcg_synth = ParametricPcgSynthesizer()
         if self._hemo is None:
@@ -534,6 +546,68 @@ class SimulationPipeline:
             raise ValueError(f"Unknown PCG engine mode: {mode}. Use 'parametric' or 'physical'.")
         self._pcg_engine_mode = mode
         logger.info("PCG engine mode set to: %s", mode)
+
+    def set_ecg_morph(self, morph_name: str | None) -> None:
+        """Activate or deactivate a pathological ECG morphology.
+
+        Args:
+            morph_name: Name from ecg_morph_library (e.g. 'lbbb', 'wpw')
+                        or None to deactivate.
+        """
+        if morph_name is not None:
+            from app.engine.core.ecg_morph_library import get_morph_config
+            cfg = get_morph_config(morph_name)
+            if cfg is None:
+                raise ValueError(
+                    f"Unknown morphology: {morph_name}. Available: "
+                    f"{list_morphologies()}"
+                )
+        self._ecg_active_morph = morph_name
+        if self._ecg_synth is not None:
+            self._ecg_synth.active_morph = morph_name
+        logger.info("ECG morphology set to: %s", morph_name)
+
+    def generate_ecg_variance(self, seed: int | None = None) -> None:
+        """Generate random individual ECG variability and apply it."""
+        from app.engine.core.morph_variance import generate_random_variance
+        self._morph_variance = generate_random_variance(seed=seed)
+        if self._ecg_synth is not None:
+            self._ecg_synth.morph_variance = self._morph_variance
+        logger.info(
+            "ECG variance: axis=%s° age=%s sex=%s",
+            self._morph_variance.cardiac_axis_deg,
+            self._morph_variance.age_years,
+            self._morph_variance.sex,
+        )
+
+    def start_stemi(self, coronary_stenosis: float = 0.5) -> None:
+        """Start an ST-elevation MI evolution timeline.
+
+        The STEvolutionModel drives progressive ST/T/Q changes across
+        hyperacute → acute → subacute → old phases.
+        """
+        from app.engine.core.st_evolution import STEvolutionModel
+        self._st_evolution = STEvolutionModel(coronary_stenosis=coronary_stenosis)
+        self._st_evolution.start()
+        if self._ecg_synth is not None:
+            self._ecg_synth.st_evolution = self._st_evolution
+        logger.info("STEMI started (stenosis=%.1f)", coronary_stenosis)
+
+    def resolve_stemi(self) -> None:
+        """Resolve active STEMI (reperfusion). ST returns to baseline."""
+        if self._st_evolution is not None:
+            self._st_evolution.resolve()
+            logger.info("STEMI resolved (reperfusion)")
+
+    def clear_ecg_morph(self) -> None:
+        """Clear all ECG morphology, variance, and ST evolution settings."""
+        self._ecg_active_morph = None
+        self._morph_variance = None
+        self._st_evolution = None
+        if self._ecg_synth is not None:
+            self._ecg_synth.active_morph = None
+            self._ecg_synth.morph_variance = None
+            self._ecg_synth.st_evolution = None
 
         # Cross-cutting modules
         if self._autonomic is None:
