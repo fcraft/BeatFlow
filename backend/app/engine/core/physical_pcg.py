@@ -106,11 +106,14 @@ def _add_modal_burst(
     duration_ms: float,
     amplitude: float,
     sr: int,
+    rng: np.random.Generator | None = None,
 ) -> None:
     """Add a multi-mode damped sinusoid burst at onset.
 
-    Each mode contributes: rel_amp · exp(-damping·t) · sin(2π·freq·t)
-    Fast damping rates (25-60 Hz) produce natural percussive decay.
+    Each mode contributes: rel_amp · exp(-damping·t) · sin(2π·freq·t + phase)
+    with random initial phase per mode to prevent phase-aligned constructive
+    interference that causes visual baseline asymmetry. Fast damping rates
+    (25-60 Hz) produce natural percussive decay.
     """
     n = int(duration_ms / 1000.0 * sr)
     end = min(onset + n, len(buffer))
@@ -121,7 +124,8 @@ def _add_modal_burst(
 
     burst = np.zeros(actual_n, dtype=np.float64)
     for freq, rel_amp, damping in modes:
-        burst += rel_amp * np.exp(-damping * tau) * np.sin(2.0 * np.pi * freq * tau)
+        phase = rng.uniform(0, 2.0 * np.pi) if rng is not None else 0.0
+        burst += rel_amp * np.exp(-damping * tau) * np.sin(2.0 * np.pi * freq * tau + phase)
     burst *= amplitude
     buffer[onset:end] += burst
 
@@ -189,7 +193,7 @@ class PhysicalPcgSynthesizer:
             pulse_amp = amplitude * self._rng.uniform(0.7, 1.0) / _N_MICRO_PULSES
 
             if 0 <= onset < n_samples:
-                _add_modal_burst(sound, onset, modes, duration_ms, pulse_amp, sr)
+                _add_modal_burst(sound, onset, modes, duration_ms, pulse_amp, sr, rng=self._rng)
 
         # --- Turbulent noise burst ---
         noise_samples = int(_NOISE_BURST_DURATION_MS / 1000.0 * sr)
