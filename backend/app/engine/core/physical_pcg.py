@@ -394,6 +394,13 @@ class PhysicalPcgSynthesizer:
         # --- 4-band WDRC ---
         pcm = self._compressor.process(pcm)
 
+        # --- DC removal ---
+        # Damped sinusoids exp(-αt)·sin(ωt) have a net DC offset because
+        # successive half-cycles shrink under the exponential envelope.
+        # Real stethoscopes are AC-coupled — remove DC so the waveform is
+        # visually symmetric around the zero baseline.
+        pcm -= np.mean(pcm)
+
         # --- Beat crossfade (5ms cosine ramp) ---
         fade_samples = int(0.005 * sr)
         if fade_samples > 0 and n_samples > 2 * fade_samples:
