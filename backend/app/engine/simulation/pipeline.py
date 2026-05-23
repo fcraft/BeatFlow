@@ -80,6 +80,16 @@ class SimulationPipeline:
         self._causal_graph: Any = None
         self._use_causal_graph: bool = False
 
+        # Phase 3B: scenario models
+        self._hemorrhage: Any = None              # HypovolemiaModel
+        self._sepsis: Any = None                  # SepsisModel
+        self._chronic: Any = None                 # ChronicAdaptation
+        self._chronic_timer_sec: float = 0.0      # Accumulator for 60s ticks
+
+        # Phase 4: causal event tracking
+        from app.engine.core.causal_event import CausalTracker
+        self._causal_tracker = CausalTracker(max_events=200)
+
         # Cross-cutting modules
         self._autonomic: Any = None
         self._pharma: Any = None
@@ -409,6 +419,35 @@ class SimulationPipeline:
                 from app.engine.modulation.causal_graph import create_default_graph
                 self._causal_graph = create_default_graph()
             logger.info("Causal graph engine: %s", "ON" if enabled else "OFF")
+
+        # === Scenario Models (Phase 3B) ===
+        elif cmd == "start_hemorrhage":
+            rate = float(p.get("rate_ml_per_min", 50.0))
+            from app.engine.modulation.hemorrhage_model import HypovolemiaModel
+            if self._hemorrhage is None:
+                self._hemorrhage = HypovolemiaModel()
+            self._hemorrhage.start_hemorrhage(rate)
+        elif cmd == "stop_hemorrhage":
+            if self._hemorrhage is not None:
+                self._hemorrhage.stop_hemorrhage()
+        elif cmd == "fluid_bolus":
+            volume = float(p.get("volume_ml", 500.0))
+            if self._hemorrhage is not None:
+                self._hemorrhage.administer_fluids(volume)
+        elif cmd == "start_sepsis":
+            severity = float(p.get("severity", 0.5))
+            from app.engine.modulation.sepsis_model import SepsisModel
+            if self._sepsis is None:
+                self._sepsis = SepsisModel()
+            self._sepsis.start_sepsis(severity)
+        elif cmd == "resolve_sepsis":
+            if self._sepsis is not None:
+                self._sepsis.resolve_sepsis()
+        elif cmd == "start_chronic_adaptation":
+            from app.engine.modulation.chronic_adaptation import ChronicAdaptation
+            if self._chronic is None:
+                self._chronic = ChronicAdaptation()
+            logger.info("Chronic adaptation model initialized")
 
         # === ECG Morphology / STEMI / Variance (Phase 2) ===
         elif cmd == "set_ecg_morph":
@@ -748,6 +787,21 @@ class SimulationPipeline:
         if self._st_evolution is not None and self._st_evolution.active:
             self._st_evolution.update(rr_sec)
 
+        # --- Scenario models (Phase 3B) ---
+        if self._hemorrhage is not None and self._hemorrhage.active:
+            self._hemorrhage.update(rr_sec, self._modifiers)
+        if self._sepsis is not None and self._sepsis.active:
+            self._sepsis.update(rr_sec, self._modifiers)
+        self._chronic_timer_sec += rr_sec
+        if self._chronic_timer_sec >= 60.0 and self._chronic is not None:
+            pharma_levels_for_chronic: dict[str, float] = {}
+            if self._pharma is not None:
+                pharma_levels_for_chronic = self._pharma.step(0.0)
+            self._chronic.update(
+                self._chronic_timer_sec, self._modifiers, pharma_levels_for_chronic,
+            )
+            self._chronic_timer_sec = 0.0
+
         # --- Layer 1: Parametric Conduction ---
         conduction: ConductionResult = self._conduction.propagate(rr_sec, self._modifiers)
 
@@ -895,6 +949,12 @@ class SimulationPipeline:
             "rv_stroke_volume": round(hemo.rv_stroke_volume, 1),
             "coronary_stenosis": round(getattr(self._intent, 'coronary_stenosis', 0.0), 2),
             "raas_activation": round(self._autonomic.raas_activation, 3) if self._autonomic and hasattr(self._autonomic, 'raas_activation') else 0.0,
+            # Phase 3B scenario model states
+            "hemorrhage": self._hemorrhage.state.to_dict() if self._hemorrhage else {"active": False},
+            "sepsis": self._sepsis.state.to_dict() if self._sepsis else {"active": False},
+            "chronic_adaptation": self._chronic.state.to_dict() if self._chronic else {},
+            # Phase 3A feature flag
+            "causal_graph_active": self._use_causal_graph,
         }
 
         annotation = {
@@ -1161,6 +1221,10 @@ class SimulationPipeline:
                         }
                     if physiology_detail is not None:
                         message["physiology_detail"] = physiology_detail
+                    # Phase 4: causal event stream
+                    causal_events = self._causal_tracker.recent(20)
+                    if causal_events:
+                        message["causal_events"] = causal_events
                     try:
                         await self._send_callback(message)
                     except Exception:
