@@ -456,21 +456,180 @@ class ExternalCompressionModel:
   → 心电: 与机械刺激诱发的 PVC 竞争
 ```
 
+### 机械-电反馈模型 (MechanoElectricalFeedbackModel)
+
+**这是物理路径与心肌电生理之间的关键耦合桥梁。**
+
+剧烈运动后+Valsalva 释放+下蹲诱发短阵 VT 的机制：
+
+```
+剧烈运动后                     Valsalva 释放                下蹲
+儿茶酚胺高位                   胸内压骤降                   静脉回流↑↑
+交感亢进                       preload↓↓                   preload↑↑↑
+    ↓                              ↓                           ↓
+心室 ERP 缩短              ←── 心肌被急剧拉伸 ──→       机械-电反馈
+不应期离散度↑              牵张激活阳离子通道(SACs)            ↓
+DAD 易损性↑                    ↓                      细胞内 Ca²⁺ 超载
+                          Na⁺/Ca²⁺ 内流              触发后除极
+                              ↓                           ↓
+┌──────────────────────────────────────────────────────────────────┐
+│  条件耦合：高儿茶酚胺 + 快速 preload 变化 + 机械牵张                │
+│  → DAD 幅度 > 阈电位 → 触发 PVC / 短阵 VT                         │
+│  → 多灶早搏 + ERP 离散度 → 功能性折返 → 持续 VT                     │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+核心生理原理：
+- **牵张激活通道 (SACs)**：心肌细胞膜上的非选择性阳离子通道，在细胞拉伸时开放
+- **机械-电反馈**：心肌长度变化直接改变动作电位波形——拉伸导致 APD 延长 + 后除极
+- **Ca²⁺ 超载**：牵张 + 高儿茶酚胺 → 肌浆网 Ca²⁺ 泄漏 → DAD
+- **ERP 离散度增加**：右心室（薄壁）比左心室更易被拉伸 → 不均匀不应期 → 折返基质
+
+```python
+class MechanoElectricalFeedbackModel:
+    """
+    将前负荷变化率(dPreload/dt)和心肌牵张映射为致心律失常性。
+    
+    不直接创建 pacemaker——而是修改 MyocardiumState 的触发易损性，
+    让 PacemakerCompetition 根据更新后的心肌状态自然产生 PVC/VT。
+    """
+
+    def compute_stretch_effects(
+        self,
+        preload_history: list[float],  # 最近 N 秒的前负荷序列
+        dt_sec: float,
+        catecholamine_level: float,    # 儿茶酚胺水平 (运动/情绪)
+        baseline_state: MyocardiumState,
+    ) -> StretchEffect:
+        """
+        参数:
+        - preload_history: 滑动窗口内的前负荷值（用于计算 dPreload/dt）
+        - catecholamine_level: [0, 1] 儿茶酚胺水平
+        
+        返回 StretchEffect:
+        - dad_susceptibility_delta: float     # DAD 易损性增量
+        - ead_susceptibility_delta: float     # EAD 易损性增量
+        - erp_dispersion_delta: float         # 不应期离散度增量
+        - stretch_pvc_probability: float      # 牵张直接诱发 PVC 概率
+        - vt_sustainability_score: float      # VT 可维持性评分 [0, 1]
+        """
+
+    def _compute_d_preload_dt(
+        self, preload_history: list[float], dt_sec: float
+    ) -> float:
+        """
+        计算前负荷变化率 (normalized units/sec)。
+        
+        阈值：
+        - |dPreload/dt| < 0.05 → 变化平缓，几乎无机械-电效应
+        - |dPreload/dt| > 0.2  → 快速变化，SACs 激活
+        - |dPreload/dt| > 0.5  → 剧烈变化（如 Valsalva 释放+下蹲叠加），
+          相当于前负荷在 1-2 秒内从 0.5 跳到 1.3
+        """
+
+    def _compute_stretch_dad_susceptibility(
+        self,
+        d_preload_dt: float,
+        preload_current: float,
+        catecholamine_level: float,
+    ) -> float:
+        """
+        牵张→DAD 易损性映射。
+        
+        关键非线性：DAD 需要两个条件同时满足：
+        1. 快速牵张 (SACs 开放) → Ca²⁺ 内流
+        2. 高儿茶酚胺 (cAMP/PKA) → 肌浆网 Ca²⁺ 泄漏
+        
+        单独牵张或单独高儿茶酚胺 → 轻度 DAD (可能不触发)
+        两者同时 → DAD 幅度乘性放大 → 阈上除极 → PVC
+        
+        公式：
+        dad_delta = stretch_factor * catecholamine_factor
+        stretch_factor = sigmoid(d_preload_dt, threshold=0.2, steepness=4)
+        catecholamine_factor = 0.1 + 0.9 * catecholamine_level
+        
+        这解释了为什么:
+        - 安静时 Valsalva → 牵张但低儿茶酚胺 → 偶尔 PVC
+        - 运动刚结束 → 高儿茶酚胺但无牵张 → 低风险（无 SACs 激活）
+        - 运动后+Valsalva+下蹲 → 两者叠加 → DAD 量大 → PVC/短阵 VT ← 你体验到的！
+        """
+
+    def _compute_erp_dispersion_delta(
+        self,
+        d_preload_dt: float,
+    ) -> float:
+        """
+        快速不均匀牵张 → ERP 离散度增加。
+        
+        机制：RV vs LV 壁厚不同 → 同等牵张下扩张程度不同
+        → 不应期缩短不均匀 → 离散度↑
+        → 当离散度 > 阈值时 → 功能性折返 → VT 可维持
+        """
+```
+
+### 体位+憋气+下蹲+吐气 完整交互链
+
+将上述模型串联到 PhysiolMechanicalMapper 中，构建完整路径：
+
+```text
+初始状态: 刚结束剧烈运动
+  → catecholamine = 0.8 (高位)
+  → sinus_rate = 150 (高位)
+  → myocardial_state.ventricular_erp = 缩短 (交感效应)
+  → myocardial_state.dad_susceptibility = 0.4 (高儿茶酚胺基线)
+
+用户执行: 憋气 (Valsalva Phase II, 持续 10s)
+  → thoracic_pressure = +40mmHg
+  → venous_return = 0.6 → preload = 0.6
+  → 前负荷梯度: 平缓下降 (dPreload/dt ≈ -0.03) → 无明显牵张
+
+用户执行: 猛烈吐气 (Valsalva Phase III → 0.5s)
+  → thoracic_pressure = -10mmHg (骤降)
+  → pulmonary vein squeeze → preload 从 0.6 跳到 0.9
+  → dPreload/dt = (0.9-0.6)/0.5 = 0.6 → 超过阈值 0.5!
+
+用户同时: 下蹲
+  → posture venous_return = 1.3
+  → preload 从 0.9 跳到 1.3
+  → dPreload/dt = (1.3-0.9)/0.5 = 0.8 → 极度剧烈牵张!
+
+合并时间线 (吐气+下蹲几乎同时):
+  dPreload/dt ≈ 0.7  (剧烈牵张)
+  catecholamine = 0.8 (高位)
+  
+MechanoElectricalFeedbackModel 计算:
+  stretch_factor = sigmoid(0.7, 0.2, 4) ≈ 0.88
+  catecholamine_factor = 0.1 + 0.9*0.8 = 0.82
+  dad_susceptibility_delta = 0.88 * 0.82 = 0.72
+  
+  myocardial_state.dad_susceptibility = 基线 0.4 + delta 0.72 = 1.12 (clamped to 1.0)
+  myocardial_state.erp_dispersion += 0.4
+  
+结果:
+  → DAD 易损性 = 1.0 (max) → 高概率触发 PVC
+  → ERP 离散度 > 阈值 → 折返条件满足
+  → PacemakerCompetition 可同时注册: 窦性 + 多个 PVC + 短阵 VT pacemaker
+  → 竞争结果: VT pacemaker 获胜（超速抑制窦房结）
+  → 用户感知: 剧烈心悸 + 短暂 VT
+```
+
 ### PhysioMechanicalMapper
 
 ```python
 class PhysioMechanicalMapper:
     """
     将 ExternalPhysicalAction 翻译为：
-    1. 前负荷/后负荷变化 → 输入 AlgebraicHemodynamics
+    1. 前负荷/后负荷变化 → 输入 AlgebraicHemodynamics  
     2. 外部 Pacemaker → 注册进 PacemakerCompetition
     3. 机械刺激 PVC → 配置 PVC Pacemaker
+    4. 前负荷变化率 → 机械-电反馈 → MyocardiumState 致心律失常性  ← NEW
     """
 
     def __init__(
         self,
         thoracic_model: ThoracicPressureModel,
         compression_model: ExternalCompressionModel,
+        me_feedback_model: MechanoElectricalFeedbackModel,  # NEW
     ):
         ...
 
@@ -478,14 +637,17 @@ class PhysioMechanicalMapper:
         self,
         action: ExternalPhysicalAction | None,
         dt_sec: float,
+        catecholamine_level: float,  # NEW: 来自运动/情绪模型
+        preload_history: list[float],  # NEW: 滚动窗口，用于 dPreload/dt
     ) -> MechanicalEffect:
         """
         返回 MechanicalEffect:
-        - preload_modifier: float       # 前负荷乘数
-        - afterload_modifier: float     # 后负荷乘数
-        - external_pacemakers: list[Pacemaker]  # 外部起搏
-        - pvc_probability: float        # 机械刺激 PVC 概率
-        - autonomic_modifier: float     # 疼痛/应激
+        - preload_modifier: float
+        - afterload_modifier: float  
+        - external_pacemakers: list[Pacemaker]
+        - pvc_probability: float            # 机械刺激 + 牵张触发
+        - autonomic_modifier: float         # 疼痛/应激
+        - me_feedback: StretchEffect | None # NEW: 机械-电反馈
         """
 ```
 
@@ -786,6 +948,7 @@ CausalGraph 在 `myocardium` 模式下仍然发挥作用——它计算 `sympath
 | `backend/app/engine/myocardium/physio_mechanical.py` | ExternalPhysicalAction 类型 + PhysioMechanicalMapper |
 | `backend/app/engine/myocardium/thoracic_pressure.py` | ThoracicPressureModel（Valsalva 四相） |
 | `backend/app/engine/myocardium/external_compression.py` | ExternalCompressionModel |
+| `backend/app/engine/myocardium/mechano_electrical.py` | MechanoElectricalFeedbackModel（牵张→DAD/EAD/离散度） |
 | `backend/app/engine/myocardium/external_pacing.py` | 食道调搏/经皮起搏 Pacemaker 工厂 |
 | `backend/app/engine/myocardium/exercise_protocol.py` | 平板负荷试验协议（Bruce 等） |
 | `backend/app/engine/myocardium/pipeline_integration.py` | Pipeline 集成函数 |
@@ -816,6 +979,7 @@ CausalGraph 在 `myocardium` 模式下仍然发挥作用——它计算 `sympath
 | `tests/test_thoracic_pressure.py` | Valsalva 四相模型正确性 |
 | `tests/test_external_pacing.py` | 食道调搏：捕获概率、burst/ramp/overdrive 模式 |
 | `tests/test_external_compression.py` | 外压→前负荷+机械刺激 |
+| `tests/test_mechano_electrical.py` | 机械-电反馈：牵张→DAD/EAD + 儿茶酚胺协同 |
 | `tests/test_exercise_protocol.py` | Bruce 协议推进、METs→intensity 映射 |
 | `tests/test_myocardium_integration.py` | Pipeline 集成测试（运动+SVT、Valsalva+下蹲、药物+电击等组合） |
 | `tests/test_physiology_invariants.py` | 生理不变量（扩充现有） |
@@ -918,6 +1082,31 @@ async def test_esophageal_burst_termination():
 
 async def test_cough_terminates_avnrt():
     """咳嗽 → 胸内压骤变 → 压敏反射 → 迷走短暂激活 → AVN ERP↑ → AVNRT 终止。"""
+
+async def test_stretch_dad_no_catecholamine():
+    """安静状态 → Valsalva+下蹲 → 牵张但低儿茶酚胺：
+    dPreload/dt=0.7, catecholamine=0.0 → dad_delta < 0.1 → 几乎不诱发。"""
+
+async def test_stretch_dad_high_catecholamine():
+    """运动后 → Valsalva+下蹲 → 剧烈牵张 + 高儿茶酚胺：
+    dPreload/dt=0.7, catecholamine=0.8 → dad_delta > 0.7 → 高概率 PVC+VT。"""
+
+async def test_stretch_dad_multiplicative():
+    """验证 DAD 易损性 = stretch_factor * catecholamine_factor 的乘法关系。
+    单一因素都不足以触发，两者叠加才产生临床显著性。"""
+
+async def test_rapid_preload_change_erp_dispersion():
+    """不均匀牵张 → ERP 离散度↑ → 功能性折返条件满足。
+    当 erp_dispersion > 0.4 → VT pacemaker 可维持。"""
+
+async def test_post_exercise_valsalva_squat_vt_chain():
+    """完整场景：剧烈运动刚结束 (catecholamine=0.8)
+    → Valsalva 释放 (dPreload/dt=0.6)
+    → 下蹲 (dPreload/dt=0.8 叠加)
+    → MechanoElectricalFeedback: DAD↑ + ERP离散度↑
+    → 多灶 PVC pacemakers + VT pacemaker
+    → PacemakerCompetition: VT 胜出
+    → 短阵 VT 持续 3-10 秒后自发终止（儿茶酚胺代谢 + preload 稳定）"""
 
 async def test_bruce_protocol_progression():
     """Bruce 协议 0→3 min stage 1 → stage 2: intensity 应在每阶段递增。
