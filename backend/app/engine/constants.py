@@ -29,7 +29,7 @@ VITAL_RANGES = {
     "emotional_arousal":   (0.0,    1.0),
     "damage_level":        (0.0,    1.0),
     "murmur_severity":     (0.0,    1.0),
-    # ── Phase 1.1 新增参数 ──
+    # ── 身体状态/自主神经参数 ──
     "fatigue_accumulated": (0.0,    1.0),
     "caffeine_level":      (0.0,    1.0),
     "alcohol_level":       (0.0,    1.0),
@@ -38,7 +38,7 @@ VITAL_RANGES = {
     "sympathetic_tone":    (0.0,    1.0),
     "parasympathetic_tone": (0.0,   1.0),
     "ectopic_irritability": (0.0,   1.0),
-    # ── Phase 4 药物与电解质 ──
+    # ── 药物与电解质 ──
     "beta_blocker_level":  (0.0,    1.0),
     "amiodarone_level":    (0.0,    1.0),
     "digoxin_level":       (0.0,    1.0),
@@ -61,7 +61,7 @@ DEFAULT_TAU: dict[str, float] = {
     "emotional_arousal":    1.5,   # 交感神经快速
     "damage_level":        10.0,   # 渐进性病变
     "murmur_severity":      5.0,   # 逐渐加重
-    # ── Phase 1.1 新增参数 τ ──
+    # ── 身体状态/自主神经 τ ──
     "fatigue_accumulated": 30.0,   # 疲劳缓慢累积/恢复
     "caffeine_level":      15.0,   # 咖啡因代谢
     "alcohol_level":       20.0,   # 酒精代谢
@@ -70,7 +70,7 @@ DEFAULT_TAU: dict[str, float] = {
     "sympathetic_tone":     2.0,   # 交感张力快速
     "parasympathetic_tone": 3.0,   # 副交感张力
     "ectopic_irritability": 5.0,   # 异位灶易激惹性
-    # ── Phase 4 药物与电解质 τ ──
+    # ── 药物与电解质 τ ──
     "beta_blocker_level":  15.0,   # β-blocker 半衰期
     "amiodarone_level":    30.0,   # 胺碘酮 长半衰期
     "digoxin_level":       20.0,   # 地高辛 中等半衰期
@@ -92,7 +92,7 @@ BASELINE_STATE: dict[str, float | str | None] = {
     "emotional_arousal":     0.0,
     "damage_level":          0.0,
     "murmur_severity":       0.0,
-    # ── Phase 1.1 新增参数基线 ──
+    # ── 身体状态/自主神经基线 ──
     "fatigue_accumulated":   0.0,
     "caffeine_level":        0.0,
     "alcohol_level":         0.0,
@@ -101,7 +101,7 @@ BASELINE_STATE: dict[str, float | str | None] = {
     "sympathetic_tone":      0.5,
     "parasympathetic_tone":  0.5,
     "ectopic_irritability":  0.0,
-    # ── Phase 4 药物与电解质基线 ──
+    # ── 药物与电解质基线 ──
     "beta_blocker_level":    0.0,
     "amiodarone_level":      0.0,
     "digoxin_level":         0.0,

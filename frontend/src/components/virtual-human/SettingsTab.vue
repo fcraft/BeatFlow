@@ -149,7 +149,7 @@ function resetAll() {
 
     <!-- 因果图引擎 -->
     <div class="glass-section">
-      <div class="glass-section-title">因果图引擎 (Phase 3A)</div>
+      <div class="glass-section-title">因果图引擎</div>
       <div class="glass-grid glass-grid--2col">
         <button
           :class="['glass-card-btn', !store.causalGraphEnabled ? 'glass-card-btn--active' : '']"

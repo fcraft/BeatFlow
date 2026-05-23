@@ -1,4 +1,4 @@
-"""Chronic adaptation and drug tolerance model — Phase 3B.
+"""Chronic adaptation and drug tolerance model.
 
 Models long-term physiological adaptations that occur over hours to days,
 as opposed to the beat-to-beat or minute-to-minute responses handled by

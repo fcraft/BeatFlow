@@ -73,20 +73,20 @@ class SimulationPipeline:
         self._ecg_synth: Optional[EcgSynthesizerV2] = None
         self._pcg_synth: Optional[ParametricPcgSynthesizer] = None
         self._pcg_synth_physical: Optional[PhysicalPcgSynthesizer] = None
-        self._pcg_engine_mode: str = 'parametric'
+        self._pcg_engine_mode: str = 'physical'
         self._hemo: Optional[AlgebraicHemodynamics] = None
 
-        # Phase 3A: causal graph engine (feature-flagged, default off)
+        # Causal graph engine
         self._causal_graph: Any = None
-        self._use_causal_graph: bool = False
+        self._use_causal_graph: bool = True
 
-        # Phase 3B: scenario models
+        # Scenario models
         self._hemorrhage: Any = None              # HypovolemiaModel
         self._sepsis: Any = None                  # SepsisModel
         self._chronic: Any = None                 # ChronicAdaptation
         self._chronic_timer_sec: float = 0.0      # Accumulator for 60s ticks
 
-        # Phase 4: causal event tracking
+        # Causal event tracking
         from app.engine.core.causal_event import CausalTracker
         self._causal_tracker = CausalTracker(max_events=200)
 
@@ -101,7 +101,7 @@ class SimulationPipeline:
         # Exercise physiology
         self._exercise_model: Any = None
 
-        # Phase 2: ECG morphology & individual variance
+        # ECG morphology & individual variance
         self._morph_variance: Any = None        # MorphVarianceConfig
         self._st_evolution: Any = None           # STEvolutionModel
         self._ecg_active_morph: str | None = None  # Active morphology name
@@ -411,7 +411,7 @@ class SimulationPipeline:
             if mode in ("parametric", "physical"):
                 self.set_pcg_engine_mode(mode)
 
-        # === Causal Graph Engine (Phase 3A) ===
+        # === Causal Graph Engine ===
         elif cmd == "set_causal_graph":
             enabled = bool(p.get("enabled", False))
             self._use_causal_graph = enabled
@@ -420,7 +420,7 @@ class SimulationPipeline:
                 self._causal_graph = create_default_graph()
             logger.info("Causal graph engine: %s", "ON" if enabled else "OFF")
 
-        # === Scenario Models (Phase 3B) ===
+        # === Scenario Models ===
         elif cmd == "start_hemorrhage":
             rate = float(p.get("rate_ml_per_min", 50.0))
             from app.engine.modulation.hemorrhage_model import HypovolemiaModel
@@ -449,7 +449,7 @@ class SimulationPipeline:
                 self._chronic = ChronicAdaptation()
             logger.info("Chronic adaptation model initialized")
 
-        # === ECG Morphology / STEMI / Variance (Phase 2) ===
+        # === ECG Morphology / STEMI / Variance ===
         elif cmd == "set_ecg_morph":
             morph_name = str(p.get("morph", ""))
             self.set_ecg_morph(morph_name)
@@ -602,7 +602,7 @@ class SimulationPipeline:
             self._conduction = ParametricConductionNetwork()
         if self._ecg_synth is None:
             self._ecg_synth = EcgSynthesizerV2(sample_rate=ECG_SR)
-            # Phase 2: attach morphology & variance modules if configured
+            # Attach morphology & variance modules if configured
             if self._morph_variance is not None:
                 self._ecg_synth.morph_variance = self._morph_variance
             if self._st_evolution is not None:
@@ -787,7 +787,7 @@ class SimulationPipeline:
         if self._st_evolution is not None and self._st_evolution.active:
             self._st_evolution.update(rr_sec)
 
-        # --- Scenario models (Phase 3B) ---
+        # --- Scenario models ---
         if self._hemorrhage is not None and self._hemorrhage.active:
             self._hemorrhage.update(rr_sec, self._modifiers)
         if self._sepsis is not None and self._sepsis.active:
@@ -949,11 +949,11 @@ class SimulationPipeline:
             "rv_stroke_volume": round(hemo.rv_stroke_volume, 1),
             "coronary_stenosis": round(getattr(self._intent, 'coronary_stenosis', 0.0), 2),
             "raas_activation": round(self._autonomic.raas_activation, 3) if self._autonomic and hasattr(self._autonomic, 'raas_activation') else 0.0,
-            # Phase 3B scenario model states
+            # Scenario model states
             "hemorrhage": self._hemorrhage.state.to_dict() if self._hemorrhage else {"active": False},
             "sepsis": self._sepsis.state.to_dict() if self._sepsis else {"active": False},
             "chronic_adaptation": self._chronic.state.to_dict() if self._chronic else {},
-            # Phase 3A feature flag
+            # Causal graph feature flag
             "causal_graph_active": self._use_causal_graph,
         }
 
@@ -1009,7 +1009,7 @@ class SimulationPipeline:
         state_ref = self._build_state_ref()
 
         if self._use_causal_graph and self._causal_graph is not None:
-            # Phase 3A: causal graph path
+            # Causal graph path
             external = {
                 "map_mmhg": hemo.mean_arterial_pressure,
                 "paco2_mmhg": self._modifiers.paco2,
@@ -1295,7 +1295,7 @@ class SimulationPipeline:
                         }
                     if physiology_detail is not None:
                         message["physiology_detail"] = physiology_detail
-                    # Phase 4: causal event stream
+                    # Causal event stream
                     causal_events = self._causal_tracker.recent(20)
                     if causal_events:
                         message["causal_events"] = causal_events

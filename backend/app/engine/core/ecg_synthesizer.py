@@ -67,7 +67,7 @@ class EcgSynthesizerV2:
         self._t_wave_carryover_y: NDArray[np.float64] | None = None
         self._t_wave_carryover_z: NDArray[np.float64] | None = None
 
-        # Phase 2: optional morphology & variance modules
+        # Optional morphology & variance modules
         self.morph_variance: object | None = None     # MorphVarianceConfig
         self.st_evolution: object | None = None        # STEvolutionModel
         self.active_morph: str | None = None           # Morphology name from library
@@ -670,7 +670,7 @@ class EcgSynthesizerV2:
         return y_comp * scale, scale
 
     # ------------------------------------------------------------------
-    # Phase 2 helpers — morphology, ST evolution, individual variance
+    # Helpers — morphology, ST evolution, individual variance
     # ------------------------------------------------------------------
 
     @staticmethod

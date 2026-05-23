@@ -1,4 +1,4 @@
-"""Causal event tracking — Phase 4 backend.
+"""Causal event tracking — backend.
 
 Records physiological state changes as CausalEvent instances, enabling
 the frontend to display "why did this value change?" causality chains.

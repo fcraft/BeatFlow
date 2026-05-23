@@ -150,7 +150,7 @@ onUnmounted(() => {
     <ActionPotentialChart v-if="showApChart" class="cmd-desktop-only" @close="showApChart = false" />
     <CardiacCycleChart v-if="showCcChart" class="cmd-desktop-only" @close="showCcChart = false" />
 
-    <!-- Phase 4: Causality floating panel -->
+    <!-- Causality floating panel -->
     <Teleport to="body">
       <div
         v-if="showCausalPanel && store.connected"

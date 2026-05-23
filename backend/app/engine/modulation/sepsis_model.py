@@ -1,4 +1,4 @@
-"""Sepsis model — Phase 3B.
+"""Sepsis model.
 
 Models the progression from early (hyperdynamic / warm) to late
 (hypodynamic / cold) septic shock.

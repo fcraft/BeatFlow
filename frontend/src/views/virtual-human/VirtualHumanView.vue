@@ -1,5 +1,7 @@
 <script setup lang="ts">
 /**
+ * @deprecated 当前组件已废弃，请修改 VirtualHumanV2View 组件
+ *
  * 虚拟人体模型 — 主页面（一屏布局）
  *
  * 布局结构:
@@ -429,7 +431,7 @@ onUnmounted(() => {
   <ActionPotentialChart v-if="showApChart" @close="showApChart = false" />
   <CardiacCycleChart v-if="showCcChart" @close="showCcChart = false" />
 
-  <!-- Phase 4: Floating causality panel -->
+  <!-- Floating causality panel -->
   <Teleport to="body">
     <div
       v-if="showCausalPanel && store.connected"

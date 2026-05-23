@@ -1,4 +1,4 @@
-"""Physiology causal graph engine — Phase 3A core.
+"""Physiology causal graph engine.
 
 Replaces the monolithic compute_modifiers() with a directed acyclic graph
 of CausalNode instances. Each node declares its inputs/outputs and a pure

@@ -1,4 +1,4 @@
-"""Hypovolemia / Hemorrhage model — Phase 3B.
+"""Hypovolemia / Hemorrhage model.
 
 Models progressive blood volume loss and its compensatory physiological
 responses.  Intended to be called per-beat in the pipeline to update

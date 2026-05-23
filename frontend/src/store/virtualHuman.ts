@@ -100,14 +100,14 @@ export const useVirtualHumanStore = defineStore('virtualHuman', () => {
     parasympathetic_tone: 0.5,
     ectopic_irritability: 0,
     pvc_pattern: 'isolated',
-    // Phase 4 药物与电解质
+    // 药物与电解质
     beta_blocker_level: 0,
     amiodarone_level: 0,
     digoxin_level: 0,
     atropine_level: 0,
     potassium_level: 4.0,
     calcium_level: 9.5,
-    // Phase 1B 血流动力学
+    // 血流动力学
     cardiac_output: 5.0,        // L/min
     ejection_fraction: 60.0,    // %
     stroke_volume: 70.0,        // mL
@@ -133,13 +133,13 @@ export const useVirtualHumanStore = defineStore('virtualHuman', () => {
       av_block_occurred: false,
       conducted: true,
     },
-    // Phase 5 心律失常基质 + 发作
+    // 心律失常基质 + 发作
     af_substrate: 0,
     svt_substrate: 0,
     vt_substrate: 0,
     arrhythmia_episode_type: '',
     arrhythmia_episode_beats: 0,
-    // Phase 6 除颤
+    // 除颤
     defibrillation_count: 0,
     // P2-5 gallop indicators
     gallop_s3: false,
@@ -150,7 +150,7 @@ export const useVirtualHumanStore = defineStore('virtualHuman', () => {
     // HR override (心率锁定)
     hr_override_active: false,
     hr_override_value: 0,
-    // Phase 3: 新生理字段
+    // 生理字段
     pao2: 95.0,                          // mmHg
     paco2: 40.0,                         // mmHg
     ph: 7.40,
@@ -220,9 +220,9 @@ export const useVirtualHumanStore = defineStore('virtualHuman', () => {
   /** P1-5: Latest valve events (extracted from physiology_detail per beat) */
   const valveEvents = ref<ValveEventData[]>([])
 
-  // Phase 4: Causal graph
+  // Causal graph
   const causalEvents = ref<any[]>([])
-  const causalGraphEnabled = ref(false)
+  const causalGraphEnabled = ref(true)
 
   /** Feature 3: 12 导联 ECG */
   const ALL_12_LEADS = ['I','II','III','aVR','aVL','aVF','V1','V2','V3','V4','V5','V6'] as const
@@ -540,7 +540,7 @@ export const useVirtualHumanStore = defineStore('virtualHuman', () => {
           }
         }
 
-        // Phase 4: Causal events
+        // Causal events
         if (Array.isArray(msg.causal_events) && msg.causal_events.length > 0) {
           // Accumulate: prepend new events, keep last 200
           causalEvents.value = [...msg.causal_events, ...causalEvents.value].slice(0, 200)
@@ -648,7 +648,7 @@ export const useVirtualHumanStore = defineStore('virtualHuman', () => {
       }
     }
 
-    // Phase 4: Causal events
+    // Causal events
     if (Array.isArray(frame.causalEvents) && frame.causalEvents.length > 0) {
       causalEvents.value = [...frame.causalEvents, ...causalEvents.value].slice(0, 200)
     }
@@ -911,7 +911,7 @@ export const useVirtualHumanStore = defineStore('virtualHuman', () => {
     physiologyDetail,
     // P1-5: Valve events
     valveEvents,
-    // Phase 4: Causal graph
+    // Causal graph
     causalEvents,
     causalGraphEnabled,
     toggleCausalGraph,
