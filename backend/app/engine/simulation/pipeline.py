@@ -1055,6 +1055,58 @@ class SimulationPipeline:
             if v.severity == "error":
                 logger.warning("Invariant violation: %s", v.message)
 
+        # 6. Record causal events for significant physiological changes
+        self._record_causal_events(hemo, rr_sec)
+
+    def _record_causal_events(self, hemo: HemodynamicState, rr_sec: float) -> None:
+        """Record causal events for significant modifier changes."""
+        m = self._modifiers
+        tracker = self._causal_tracker
+        prev = getattr(self, '_prev_modifiers_snapshot', None)
+        snapshot = {
+            'hr': hemo.heart_rate,
+            'sbp': hemo.systolic_bp,
+            'dbp': hemo.diastolic_bp,
+            'co': hemo.cardiac_output,
+            'symp': m.sympathetic_tone,
+            'para': m.parasympathetic_tone,
+            'sa_rate': m.sa_rate_modifier,
+            'contractility': m.contractility_modifier,
+            'tpr': m.tpr_modifier,
+        }
+        self._prev_modifiers_snapshot = snapshot
+
+        if prev is None:
+            return  # First beat, no baseline
+
+        # Record significant changes (>5% deviation)
+        threshold = 0.05
+        changes: list[tuple[str, str, float, float, str]] = []
+
+        if abs(snapshot['hr'] - prev['hr']) / max(1, prev['hr']) > threshold:
+            changes.append(('Heart Rate', 'vitals.heart_rate', prev['hr'], snapshot['hr'],
+                           f'HR changed {snapshot["hr"] - prev["hr"]:+.1f} BPM'))
+        if abs(snapshot['sbp'] - prev['sbp']) / max(1, prev['sbp']) > threshold:
+            changes.append(('Systolic BP', 'vitals.systolic_bp', prev['sbp'], snapshot['sbp'],
+                           f'SBP changed {snapshot["sbp"] - prev["sbp"]:+.1f} mmHg'))
+        if abs(snapshot['symp'] - prev['symp']) > 0.05:
+            changes.append(('Sympathetic Tone', 'vitals.sympathetic_tone', prev['symp'], snapshot['symp'],
+                           f'Sympathetic tone {"↑" if snapshot["symp"] > prev["symp"] else "↓"} to {snapshot["symp"]:.2f}'))
+        if abs(snapshot['sa_rate'] - prev['sa_rate']) > 0.05:
+            changes.append(('SA Rate Modifier', 'modifiers.sa_rate_modifier', prev['sa_rate'], snapshot['sa_rate'],
+                           f'SA node rate modifier changed to {snapshot["sa_rate"]:.2f}'))
+
+        if changes:
+            source = 'causal_graph' if self._use_causal_graph else 'physiology_modulator'
+            detail = 'beat_update'
+            if self._hemorrhage is not None and self._hemorrhage.active:
+                source = 'hemorrhage'
+                detail = self._hemorrhage.state.phase
+            elif self._sepsis is not None and self._sepsis.active:
+                source = 'sepsis'
+                detail = self._sepsis.state.phase
+            tracker.record_chain(source, detail, changes)
+
     def _build_state_ref(self) -> Any:
         """Build a minimal state_ref for compute_modifiers exercise model."""
         class _StateRef:

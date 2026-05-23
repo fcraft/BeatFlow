@@ -10,7 +10,7 @@
  */
 import { computed, ref, reactive, onUnmounted, onMounted, onBeforeUnmount, toRef, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { Save, BarChart3, Eye, EyeOff, Volume2, VolumeX, Menu, LogOut } from 'lucide-vue-next'
+import { Save, BarChart3, Eye, EyeOff, Volume2, VolumeX, Menu, LogOut, X } from 'lucide-vue-next'
 import { useVirtualHumanStore } from '@/store/virtualHuman'
 import { useConnectionStore } from '@/store/connection'
 import { useAuthStore } from '@/store/auth'
@@ -37,6 +37,7 @@ import ControlDrawer from '@/components/virtual-human/ControlDrawer.vue'
 import PvLoopChart from '@/components/virtual-human/PvLoopChart.vue'
 import ActionPotentialChart from '@/components/virtual-human/ActionPotentialChart.vue'
 import CardiacCycleChart from '@/components/virtual-human/CardiacCycleChart.vue'
+import CausalityPanel from '@/components/ui/CausalityPanel.vue'
 
 const store = useVirtualHumanStore()
 const connectionStore = useConnectionStore()
@@ -56,6 +57,7 @@ const ecgWaveformRef = ref<any>(null)
 const showPvLoop = ref(false)
 const showApChart = ref(false)
 const showCcChart = ref(false)
+const showCausalPanel = ref(false)
 
 /* ── 侧边导航菜单（Teleport 到 body，避免 stacking context 遮挡） ── */
 const showNavMenu = ref(false)
@@ -318,6 +320,16 @@ onUnmounted(() => {
               >
                 Wiggers
               </button>
+              <button
+                class="px-2 py-1 text-[10px] font-medium rounded border transition-colors"
+                :class="showCausalPanel
+                  ? 'text-violet-400 bg-violet-400/10 border-violet-400/30'
+                  : 'text-white/40 border-white/20 hover:bg-white/5'"
+                @click="showCausalPanel = !showCausalPanel"
+                title="Causal Trace"
+              >
+                CX
+              </button>
             </div>
           </div>
 
@@ -416,6 +428,27 @@ onUnmounted(() => {
   <PvLoopChart v-if="showPvLoop" @close="showPvLoop = false" />
   <ActionPotentialChart v-if="showApChart" @close="showApChart = false" />
   <CardiacCycleChart v-if="showCcChart" @close="showCcChart = false" />
+
+  <!-- Phase 4: Floating causality panel -->
+  <Teleport to="body">
+    <div
+      v-if="showCausalPanel && store.connected"
+      class="fixed top-16 right-4 w-96 max-h-[70vh] overflow-y-auto z-50
+             bg-gray-900/95 backdrop-blur border border-white/10 rounded-xl
+             shadow-2xl p-4"
+    >
+      <div class="flex items-center justify-between mb-3">
+        <span class="text-sm font-semibold text-white/80">Causal Trace</span>
+        <button
+          class="text-white/40 hover:text-white/80 transition-colors"
+          @click="showCausalPanel = false"
+        >
+          <X :size="16" />
+        </button>
+      </div>
+      <CausalityPanel :events="store.causalEvents" :max-visible="8" />
+    </div>
+  </Teleport>
 </template>
 
 <style>

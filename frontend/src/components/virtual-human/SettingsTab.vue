@@ -147,6 +147,28 @@ function resetAll() {
       <p class="glass-hint">Parametric: 阻尼正弦波模态; Physical: 脉冲激励+谐振器+WDRC+胸壁滤波</p>
     </div>
 
+    <!-- 因果图引擎 -->
+    <div class="glass-section">
+      <div class="glass-section-title">因果图引擎 (Phase 3A)</div>
+      <div class="glass-grid glass-grid--2col">
+        <button
+          :class="['glass-card-btn', !store.causalGraphEnabled ? 'glass-card-btn--active' : '']"
+          @click="store.causalGraphEnabled && store.toggleCausalGraph()"
+        >
+          <span class="glass-card-label">Legacy</span>
+          <span class="glass-card-desc">直接参数映射</span>
+        </button>
+        <button
+          :class="['glass-card-btn', store.causalGraphEnabled ? 'glass-card-btn--active' : '']"
+          @click="!store.causalGraphEnabled && store.toggleCausalGraph()"
+        >
+          <span class="glass-card-label">Causal Graph</span>
+          <span class="glass-card-desc">生理因果图+一阶滞后</span>
+        </button>
+      </div>
+      <p class="glass-hint">Causal Graph: 18节点4层DAG, 模拟baroreflex/chemoreflex/RAAS/药物/运动级联效应</p>
+    </div>
+
     <!-- 重置 -->
     <button class="glass-pill-btn glass-pill-btn--ghost w-full" @click="resetAll">
       重置为健康基线

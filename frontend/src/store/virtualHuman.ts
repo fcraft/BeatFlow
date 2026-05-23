@@ -220,6 +220,10 @@ export const useVirtualHumanStore = defineStore('virtualHuman', () => {
   /** P1-5: Latest valve events (extracted from physiology_detail per beat) */
   const valveEvents = ref<ValveEventData[]>([])
 
+  // Phase 4: Causal graph
+  const causalEvents = ref<any[]>([])
+  const causalGraphEnabled = ref(false)
+
   /** Feature 3: 12 导联 ECG */
   const ALL_12_LEADS = ['I','II','III','aVR','aVL','aVF','V1','V2','V3','V4','V5','V6'] as const
   const selectedLeads = ref<string[]>(['II'])
@@ -408,6 +412,11 @@ export const useVirtualHumanStore = defineStore('virtualHuman', () => {
     }
   }
 
+  function toggleCausalGraph() {
+    causalGraphEnabled.value = !causalGraphEnabled.value
+    sendCommand('set_causal_graph', { enabled: causalGraphEnabled.value })
+  }
+
   function handleMessage(msg: any) {
     switch (msg.type) {
       case 'init':
@@ -529,6 +538,12 @@ export const useVirtualHumanStore = defineStore('virtualHuman', () => {
           if (Array.isArray(msg.physiology_detail.valve_events)) {
             valveEvents.value = msg.physiology_detail.valve_events
           }
+        }
+
+        // Phase 4: Causal events
+        if (Array.isArray(msg.causal_events) && msg.causal_events.length > 0) {
+          // Accumulate: prepend new events, keep last 200
+          causalEvents.value = [...msg.causal_events, ...causalEvents.value].slice(0, 200)
         }
 
         // P1-PCG: Multi-position channel dispatch
@@ -891,5 +906,9 @@ export const useVirtualHumanStore = defineStore('virtualHuman', () => {
     physiologyDetail,
     // P1-5: Valve events
     valveEvents,
+    // Phase 4: Causal graph
+    causalEvents,
+    causalGraphEnabled,
+    toggleCausalGraph,
   }
 })
