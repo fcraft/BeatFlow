@@ -1028,6 +1028,8 @@ class SimulationPipeline:
                 "calcium_level": smoothed.calcium_level,
                 "symp_override": getattr(smoothed, 'sympathetic_tone_override', None) or 0.0,
                 "para_override": getattr(smoothed, 'parasympathetic_tone_override', None) or 0.0,
+                "exercise_duration_sec": self._exercise_duration_sec,
+                "fatigue_level": smoothed.fatigue_level,
                 "rv_contractility": getattr(smoothed, 'rv_contractility', 1.0),
             }
             result = self._causal_graph.step(rr_sec, external)

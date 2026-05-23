@@ -286,7 +286,14 @@ class EcgSynthesizerV2:
             t_t_peak = t_qrs + conduction_qt * 0.72
 
         rr_sec = conduction.rr_sec
-        max_t_peak = rr_sec - 0.060
+        # Allow T-wave peak up to 88% of RR (normal) or 92% (no forward P-wave).
+        # At 180 BPM (RR=333ms): max_t_peak goes from 273→293ms (retrograde)
+        # or 273→293ms (normal), giving the T-wave room to complete.
+        if conduction.p_wave_mode in ("retrograde", "absent"):
+            t_peak_frac = 0.92
+        else:
+            t_peak_frac = 0.88
+        max_t_peak = rr_sec * t_peak_frac
         t_t_peak = min(t_t_peak, max_t_peak)
 
         # Base T-wave amplitudes per component
@@ -294,9 +301,12 @@ class EcgSynthesizerV2:
         tx_amp = 0.15       # X: upright T in lateral leads
         tz_amp = -0.10      # Z: negative → V1-V3 T inversion/low amplitude
 
-        t_tail_y = 0.10
-        t_tail_x = 0.06
-        t_tail_z = -0.04
+        # Scale T-wave tail width and offset with RR for tachycardia
+        rr_ratio = min(1.0, rr_sec / 0.6)  # 1.0 at ≥36 BPM, scales down below
+        t_tail_offset = 0.080 * rr_ratio
+        t_tail_y = 0.10 * rr_ratio
+        t_tail_x = 0.06 * rr_ratio
+        t_tail_z = -0.04 * rr_ratio
 
         # --- Electrolyte modulation ---
         t_sigma = 0.045
@@ -605,7 +615,13 @@ class EcgSynthesizerV2:
             t_t_peak = t_t_start + 0.110
 
         t_tail_center = t_t_peak + 0.080
-        if t_tail_center <= rr_sec + 0.020:
+        # Overflow is needed when the T-wave extends past the beat boundary.
+        # Check both the tail center AND the main peak width: if the peak's
+        # 2σ reach (t_t_peak + 2*t_sigma) exceeds rr_sec, the T-wave will
+        # be visibly truncated without carryover into the next beat.
+        t_sigma = 0.045  # default t_sigma from _build_sinus_vcg
+        peak_reach = t_t_peak + 2.0 * t_sigma
+        if t_tail_center < rr_sec + 0.010 and peak_reach < rr_sec:
             self._t_wave_carryover_x = None
             self._t_wave_carryover_y = None
             self._t_wave_carryover_z = None

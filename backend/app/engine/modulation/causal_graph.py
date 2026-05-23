@@ -373,17 +373,32 @@ def create_default_graph() -> CausalGraph:
     # ------------------------------------------------------------------
 
     def exercise_effects_fn(d: dict) -> dict:
-        """Exercise intensity → HR/SV/TPR deltas."""
+        """Exercise intensity → HR/SV/TPR deltas with cardiac drift.
+
+        Cardiac drift (τ≈20min): during sustained exercise, HR gradually
+        rises 3-5% per hour as stroke volume declines. Fatigue compensation:
+        each 0.1 fatigue → ~2% HR increase from reduced SV.
+        """
         ex = d["exercise_intensity"]
+        elapsed = d.get("exercise_duration_sec", 0.0)
+        fatigue = d.get("fatigue_level", 0.0)
+
+        # Cardiac drift: saturating exponential, tau=1200s (20 min)
+        drift = 1.0 + 0.15 * ex * (1.0 - math.exp(-elapsed / 1200.0))
+        # Fatigue compensation
+        fatigue_factor = 1.0 + 0.2 * max(0.0, fatigue)
+        # Combined HR drive
+        hr_drive = 0.8 * ex * drift * fatigue_factor
+
         return {
-            "ex_hr_drive": 0.8 * ex,
+            "ex_hr_drive": hr_drive,
             "ex_contractility_drive": 0.4 * ex,
-            "ex_tpr_drive": -0.2 * ex,  # Exercise → vasodilation in muscle
+            "ex_tpr_drive": -0.2 * ex * drift,
         }
 
     nodes.append(CausalNode(
         name="exercise_effects",
-        inputs=["exercise_intensity"],
+        inputs=["exercise_intensity", "exercise_duration_sec", "fatigue_level"],
         outputs=["ex_hr_drive", "ex_contractility_drive", "ex_tpr_drive"],
         transfer_fn=exercise_effects_fn,
         time_constant_ms=1000.0,  # ~1s to steady state
@@ -595,5 +610,6 @@ def create_default_graph() -> CausalGraph:
         "potassium_level", "calcium_level",
         "emotional_arousal",
         "symp_override", "para_override",
+        "exercise_duration_sec", "fatigue_level",
         "rv_contractility",
     })
