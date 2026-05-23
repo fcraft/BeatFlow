@@ -39,7 +39,7 @@ _DOWER_INV = np.array([
     [-0.235,  1.066, -0.132],    # Lead II
     [-0.515,  0.157,  0.917],    # V1
     [ 0.044,  0.164,  1.387],    # V2
-    [ 0.882,  0.098,  1.277],    # V3
+    [ 0.882,  0.098,  0.880],    # V3  (Z reduced from 1.277 → proper R/S transition)
     [ 1.213,  0.127,  0.601],    # V4
     [ 1.125,  0.127, -0.086],    # V5
     [ 0.831,  0.076, -0.230],    # V6
@@ -212,17 +212,21 @@ class EcgSynthesizerV2:
         # ==============================================================
         # P WAVE — atrial depolarisation
         # ==============================================================
+        # SA node fires at t_p; atrial depolarisation wavefront spreads over
+        # ~60-80ms, peaking on the surface ECG at ~40-50ms post-firing.
+        # P-wave visible width ≈ 4σ, targeting 80-100ms total duration.
         if conduction.p_wave_present:
             t_p = act_times['sa']
+            t_p_peak = t_p + 0.045  # peak 45ms after SA firing
             # X: positive (atria depolarise left)
-            x += _g(t, t_p, sigma=0.040, amplitude=0.08)
-            x += _g(t, t_p + 0.050, sigma=0.030, amplitude=0.02)
+            x += _g(t, t_p_peak, sigma=0.022, amplitude=0.08)
+            x += _g(t, t_p_peak + 0.040, sigma=0.020, amplitude=0.02)
             # Y: positive (atria depolarise inferiorly)
-            y += _g(t, t_p, sigma=0.040, amplitude=0.12)
-            y += _g(t, t_p + 0.060, sigma=0.030, amplitude=0.03)
+            y += _g(t, t_p_peak, sigma=0.022, amplitude=0.12)
+            y += _g(t, t_p_peak + 0.040, sigma=0.020, amplitude=0.03)
             # Z: biphasic — positive then negative (classic V1 P-wave)
-            z += _g(t, t_p, sigma=0.030, amplitude=0.06)
-            z += _g(t, t_p + 0.060, sigma=0.025, amplitude=-0.04)
+            z += _g(t, t_p_peak, sigma=0.020, amplitude=0.06)
+            z += _g(t, t_p_peak + 0.040, sigma=0.018, amplitude=-0.04)
 
         # ==============================================================
         # QRS COMPLEX — ventricular depolarisation
@@ -242,11 +246,16 @@ class EcgSynthesizerV2:
         y += _g(t, t_qrs + 0.020, sigma=0.005, amplitude=-0.15)   # S wave
 
         # --- Z component (front-back) — KEY for V-lead transition ---
-        # Septal depolarisation goes anterior (positive Z → V1 small r)
-        # Free wall depolarisation goes posterior (negative Z → V1 deep S)
-        z += _g(t, t_qrs - 0.005, sigma=0.004, amplitude=0.35)    # septal r (→ V1 r)
-        z += _g(t, t_qrs + 0.008, sigma=0.006, amplitude=-0.85)   # free wall (→ V1 S)
-        z += _g(t, t_qrs + 0.025, sigma=0.005, amplitude=0.08)    # terminal
+        # Septal→apex→free-wall depolarisation sweeps posterior over ~40ms.
+        # Z negative peak is aligned with X/Y R-wave peak (~t+5ms) so the net
+        # QRS stays R-dominant in V3-V4. The posterior wave decays in lockstep
+        # with X/Y to produce a smooth V1(rS)→V6(qR) precordial transition.
+        z += _g(t, t_qrs - 0.005, sigma=0.004, amplitude=0.35)    # septal r
+        z += _g(t, t_qrs + 0.003, sigma=0.004, amplitude=-0.15)   # early posterior
+        z += _g(t, t_qrs + 0.006, sigma=0.004, amplitude=-0.38)   # posterior peak (≈X/Y R)
+        z += _g(t, t_qrs + 0.011, sigma=0.005, amplitude=-0.28)   # mid free wall
+        z += _g(t, t_qrs + 0.018, sigma=0.005, amplitude=-0.12)   # late free wall
+        z += _g(t, t_qrs + 0.028, sigma=0.005, amplitude=0.08)    # terminal
 
         # ==============================================================
         # T WAVE — ventricular repolarisation
@@ -254,8 +263,11 @@ class EcgSynthesizerV2:
         if qt_ms > 200.0:
             t_t_peak = t_qrs + (qt_ms / 1000.0) - 0.060
         else:
-            t_t_start = act_times['purkinje'] + apds['purkinje']
-            t_t_peak = t_t_start + 0.110
+            # Fallback: T-wave peaks at ~72% of QT interval (end of plateau).
+            # Conduction's qt_interval_ms is the authoritative value even
+            # when the full pipeline hasn't set qt_adapted_ms on modifiers.
+            conduction_qt = conduction.qt_interval_ms / 1000.0
+            t_t_peak = t_qrs + conduction_qt * 0.72
 
         rr_sec = conduction.rr_sec
         max_t_peak = rr_sec - 0.060

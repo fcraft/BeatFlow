@@ -392,6 +392,10 @@ class SimulationPipeline:
             pattern = str(p.get("pattern", "isolated"))
             if pattern in {"isolated", "bigeminy", "trigeminy", "couplets"}:
                 intent.pvc_pattern = pattern
+        elif cmd == "set_pcg_engine_mode":
+            mode = str(p.get("mode", "parametric"))
+            if mode in ("parametric", "physical"):
+                self.set_pcg_engine_mode(mode)
         elif cmd == "reset":
             self._intent = InteractionState()
             self._transition.reset()
@@ -462,6 +466,7 @@ class SimulationPipeline:
             },
             "conduction_state": self._conduction.get_state() if self._conduction else {},
             "base_hr": self._base_hr,
+            "pcg_engine_mode": self._pcg_engine_mode,
             "selected_leads": list(self._selected_leads),
             "exercise_duration_sec": self._exercise_duration_sec,
             "high_exercise_duration_sec": self._high_exercise_duration_sec,
@@ -505,6 +510,7 @@ class SimulationPipeline:
             "available_leads": ALL_LEAD_NAMES,
             "selected_leads": list(self._selected_leads),
             "server_started_at": SERVER_STARTED_AT.isoformat(),
+            "pcg_engine_mode": self._pcg_engine_mode,
         }
 
     def set_leads(self, leads: list[str]) -> None:

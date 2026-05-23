@@ -59,6 +59,12 @@ _BACKGROUND_NOISE_AMP = 0.0005
 _RESPIRATORY_NOISE_AMP = 0.0004
 _MUSCLE_NOISE_AMP = 0.00025
 
+# Post-resonator makeup gain: the IIR biquad resonators have very small
+# feedforward coefficients (b0 ~0.003 for a 70 Hz mode at Q=8 @ 4 kHz),
+# producing peak amplitudes ~1/25th of the equivalent parametric modal burst.
+# This gain compensates so both engines produce comparable loudness.
+_RESONATOR_OUTPUT_GAIN = 12.0
+
 _IMPULSE_DURATION_MS = 8.0
 _IMPULSE_RISE_MS = 1.5
 
@@ -242,18 +248,18 @@ class PhysicalPcgSynthesizer:
 
         # S1: excitation → resonator bank
         s1_exc = self._generate_excitation(n_samples, s1_onset_sample, s1_amp)
-        pcm += self._resonator_s1.process(s1_exc)
+        pcm += self._resonator_s1.process(s1_exc) * _RESONATOR_OUTPUT_GAIN
 
         # S2 primary: excitation → resonator bank
         s2_exc = self._generate_excitation(n_samples, s2_onset_sample, s2_amp)
-        pcm += self._resonator_s2.process(s2_exc)
+        pcm += self._resonator_s2.process(s2_exc) * _RESONATOR_OUTPUT_GAIN
 
         # P2 (pulmonic S2 component): delayed, softer
         split_ms = 20.0 + 30.0 * modifiers.parasympathetic_tone
         split_ms += 15.0 * max(0.0, np.sin(resp_phase))
         p2_onset = s2_onset_sample + int(split_ms / 1000.0 * sr)
         p2_exc = self._generate_excitation(n_samples, p2_onset, s2_amp * 0.55)
-        pcm += self._resonator_s2.process(p2_exc) * 0.5
+        pcm += self._resonator_s2.process(p2_exc) * _RESONATOR_OUTPUT_GAIN * 0.5
 
         # --- S3 gallop (damage > 0.3) ---
         s3_present = damage > 0.3 and beat_kind in ('sinus', 'svt', 'af')
@@ -263,7 +269,7 @@ class PhysicalPcgSynthesizer:
             s3_amp = 0.15 * min(1.0, (damage - 0.3) / 0.4)
             s3_amp *= 1.0 + 0.15 * np.sin(resp_phase)
             s3_exc = self._generate_excitation(n_samples, s3_onset, s3_amp)
-            pcm += self._resonator_s3.process(s3_exc)
+            pcm += self._resonator_s3.process(s3_exc) * _RESONATOR_OUTPUT_GAIN
 
         # --- S4 gallop (damage > 0.5) ---
         s4_present = damage > 0.5 and conduction.p_wave_present
@@ -274,7 +280,7 @@ class PhysicalPcgSynthesizer:
             s4_amp = 0.12 * min(1.0, (damage - 0.5) / 0.3)
             s4_amp *= 1.0 + 0.15 * np.sin(resp_phase)
             s4_exc = self._generate_excitation(n_samples, s4_onset, s4_amp)
-            pcm += self._resonator_s4.process(s4_exc)
+            pcm += self._resonator_s4.process(s4_exc) * _RESONATOR_OUTPUT_GAIN
 
         # --- Murmurs ---
         murmur_present = False

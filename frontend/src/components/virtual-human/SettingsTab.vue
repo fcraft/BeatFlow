@@ -14,6 +14,7 @@ const contractility = ref(1.0)
 const tpr = ref(1.0)
 const fio2 = ref(0.21)
 const magnesium = ref(2.0)
+const pcgMode = ref<'parametric' | 'physical'>('parametric')
 
 function setDamage() { store.sendCommand('set_damage_level', { level: damageLevel.value }) }
 function setHr() { store.sendCommand('set_heart_rate', { value: targetHr.value }) }
@@ -22,6 +23,10 @@ function setContractility() { store.sendCommand('set_contractility', { level: co
 function setTpr() { store.sendCommand('set_tpr', { level: tpr.value }) }
 function setFio2() { store.sendCommand('set_fio2', { level: fio2.value }) }
 function setMagnesium() { store.sendCommand('set_magnesium', { level: magnesium.value }) }
+function setPcgMode(mode: 'parametric' | 'physical') {
+  pcgMode.value = mode
+  store.sendCommand('set_pcg_engine_mode', { mode })
+}
 
 function resetAll() {
   store.sendCommand('reset')
@@ -118,6 +123,28 @@ function resetAll() {
         <input v-model.number="magnesium" type="range" min="0.5" max="4.0" step="0.1" class="glass-range glass-range--emerald" @change="setMagnesium" />
         <p class="glass-hint">正常 1.7-2.2，低镁→QT延长</p>
       </div>
+    </div>
+
+    <!-- PCG 心音合成引擎 -->
+    <div class="glass-section">
+      <div class="glass-section-title">PCG 心音合成引擎</div>
+      <div class="glass-grid glass-grid--2col">
+        <button
+          :class="['glass-card-btn', pcgMode === 'parametric' ? 'glass-card-btn--active' : '']"
+          @click="setPcgMode('parametric')"
+        >
+          <span class="glass-card-label">Parametric</span>
+          <span class="glass-card-desc">模态分解合成</span>
+        </button>
+        <button
+          :class="['glass-card-btn', pcgMode === 'physical' ? 'glass-card-btn--active' : '']"
+          @click="setPcgMode('physical')"
+        >
+          <span class="glass-card-label">Physical</span>
+          <span class="glass-card-desc">物理建模合成</span>
+        </button>
+      </div>
+      <p class="glass-hint">Parametric: 阻尼正弦波模态; Physical: 脉冲激励+谐振器+WDRC+胸壁滤波</p>
     </div>
 
     <!-- 重置 -->
