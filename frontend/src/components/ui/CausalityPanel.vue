@@ -43,17 +43,20 @@ const eventChains = computed(() => {
 
 // ── source label & color (dark theme) ──
 const SOURCE_META: Record<string, { label: string; cls: string }> = {
-  command:           { label: 'User',        cls: 'bg-blue-500/15 text-blue-400' },
-  baroreflex:        { label: 'Baroreflex',  cls: 'bg-amber-500/15 text-amber-400' },
-  chemoreflex:       { label: 'Chemoreflex', cls: 'bg-orange-500/15 text-orange-400' },
-  raas:              { label: 'RAAS',        cls: 'bg-red-500/15 text-red-400' },
-  exercise_model:    { label: 'Exercise',    cls: 'bg-green-500/15 text-green-400' },
-  pharmacokinetics:  { label: 'Drug',        cls: 'bg-purple-500/15 text-purple-400' },
-  hemorrhage:        { label: 'Hemorrhage',  cls: 'bg-red-500/15 text-red-400' },
-  sepsis:            { label: 'Sepsis',      cls: 'bg-rose-500/15 text-rose-400' },
-  hemodynamics:      { label: 'Hemo',        cls: 'bg-cyan-500/15 text-cyan-400' },
-  ecg_morphology:    { label: 'ECG',         cls: 'bg-teal-500/15 text-teal-400' },
-  pcg_acoustics:     { label: 'PCG',         cls: 'bg-indigo-500/15 text-indigo-400' },
+  command:            { label: 'User',         cls: 'bg-blue-500/15 text-blue-400' },
+  causal_graph:       { label: 'Physiology',   cls: 'bg-sky-500/15 text-sky-400' },
+  physiology_modulator: { label: 'Modulator',  cls: 'bg-violet-500/15 text-violet-400' },
+  simulation:         { label: 'Simulation',   cls: 'bg-slate-500/15 text-slate-400' },
+  baroreflex:         { label: 'Baroreflex',   cls: 'bg-amber-500/15 text-amber-400' },
+  chemoreflex:        { label: 'Chemoreflex',  cls: 'bg-orange-500/15 text-orange-400' },
+  raas:               { label: 'RAAS',         cls: 'bg-red-500/15 text-red-400' },
+  exercise_model:     { label: 'Exercise',     cls: 'bg-green-500/15 text-green-400' },
+  pharmacokinetics:   { label: 'Drug',         cls: 'bg-purple-500/15 text-purple-400' },
+  hemorrhage:         { label: 'Hemorrhage',   cls: 'bg-red-500/15 text-red-400' },
+  sepsis:             { label: 'Sepsis',       cls: 'bg-rose-500/15 text-rose-400' },
+  hemodynamics:       { label: 'Hemo',         cls: 'bg-cyan-500/15 text-cyan-400' },
+  ecg_morphology:     { label: 'ECG',          cls: 'bg-teal-500/15 text-teal-400' },
+  pcg_acoustics:      { label: 'PCG',          cls: 'bg-indigo-500/15 text-indigo-400' },
 }
 
 function sourceMeta(source: string) {

@@ -208,6 +208,7 @@ class SimulationPipeline:
 
         # === Exercise (6) ===
         if cmd == "rest":
+            self._record_command_event(cmd, "Return to rest")
             intent.exercise_intensity = 0.0
             intent.emotional_arousal = 0.0
             intent.hr_override = None
@@ -215,18 +216,21 @@ class SimulationPipeline:
             intent.sa_rate_modifier_override = None
             intent.contractility_modifier_override = None
         elif cmd == "walk":
+            self._record_command_event(cmd, "Begin walking")
             intent.exercise_intensity = 0.3
             intent.hr_override = None
             intent.sympathetic_tone_override = 0.6
             intent.sa_rate_modifier_override = None
             intent.contractility_modifier_override = None
         elif cmd == "jog":
+            self._record_command_event(cmd, "Begin jogging")
             intent.exercise_intensity = 0.55
             intent.hr_override = None
             intent.sympathetic_tone_override = 0.7
             intent.sa_rate_modifier_override = None
             intent.contractility_modifier_override = None
         elif cmd == "run":
+            self._record_command_event(cmd, "Begin running")
             intent.exercise_intensity = 0.8
             intent.hr_override = None
             intent.sympathetic_tone_override = 0.85
@@ -331,6 +335,7 @@ class SimulationPipeline:
 
         # === Emergency intervention (2) ===
         elif cmd == "defibrillate":
+            self._record_command_event(cmd, "Defibrillation shock")
             current_rhythm = self._modifiers.rhythm_override
             if current_rhythm not in ('vf', 'vt'):
                 return
@@ -423,19 +428,23 @@ class SimulationPipeline:
         # === Scenario Models ===
         elif cmd == "start_hemorrhage":
             rate = float(p.get("rate_ml_per_min", 50.0))
+            self._record_command_event(cmd, f"Hemorrhage at {rate:.0f} mL/min")
             from app.engine.modulation.hemorrhage_model import HypovolemiaModel
             if self._hemorrhage is None:
                 self._hemorrhage = HypovolemiaModel()
             self._hemorrhage.start_hemorrhage(rate)
         elif cmd == "stop_hemorrhage":
+            self._record_command_event(cmd, "Hemorrhage stopped")
             if self._hemorrhage is not None:
                 self._hemorrhage.stop_hemorrhage()
         elif cmd == "fluid_bolus":
             volume = float(p.get("volume_ml", 500.0))
+            self._record_command_event(cmd, f"Fluid bolus {volume:.0f} mL")
             if self._hemorrhage is not None:
                 self._hemorrhage.administer_fluids(volume)
         elif cmd == "start_sepsis":
             severity = float(p.get("severity", 0.5))
+            self._record_command_event(cmd, f"Sepsis severity={severity:.1f}")
             from app.engine.modulation.sepsis_model import SepsisModel
             if self._sepsis is None:
                 self._sepsis = SepsisModel()
@@ -473,17 +482,22 @@ class SimulationPipeline:
         # === Medication (4) ===
         elif cmd in ("beta_blocker", "amiodarone", "digoxin", "atropine"):
             dose = float(p.get("dose", 1.0))
+            self._record_command_event(cmd, f"Administer {cmd} dose={dose:.1f}")
             if self._pharma is not None:
                 self._pharma.administer(cmd, dose=dose)
 
         # === Electrolyte (4) ===
         elif cmd == "hyperkalemia":
+            self._record_command_event(cmd, f"K⁺={p.get('level', 6.0)} mmol/L")
             intent.potassium_level = max(3.0, min(7.0, float(p.get("level", 6.0))))
         elif cmd == "hypokalemia":
+            self._record_command_event(cmd, f"K⁺={p.get('level', 3.0)} mmol/L")
             intent.potassium_level = max(2.5, min(3.5, float(p.get("level", 3.0))))
         elif cmd == "hypercalcemia":
+            self._record_command_event(cmd, f"Ca²⁺={p.get('level', 12.0)} mg/dL")
             intent.calcium_level = max(8.5, min(14.0, float(p.get("level", 12.0))))
         elif cmd == "hypocalcemia":
+            self._record_command_event(cmd, f"Ca²⁺={p.get('level', 7.0)} mg/dL")
             intent.calcium_level = max(6.0, min(8.5, float(p.get("level", 7.0))))
 
         # === Arrhythmia substrate (3) ===
@@ -1130,6 +1144,21 @@ class SimulationPipeline:
                 detail = self._sepsis.state.phase
             tracker.record_chain(source, detail, changes)
 
+    def _record_command_event(self, command: str, detail: str = "") -> None:
+        """Record a user-command causal event (L1 in the causality hierarchy).
+
+        Called from apply_command() to make user interventions visible in
+        the CausalityPanel chain display.
+        """
+        self._causal_tracker.record(
+            source="command",
+            source_detail=detail or command,
+            target=command,
+            target_path=f"command.{command}",
+            new_value=command,
+            mechanism=f"User triggered: {command}",
+        )
+
     def _build_state_ref(self) -> Any:
         """Build a minimal state_ref for compute_modifiers exercise model."""
         class _StateRef:
@@ -1261,7 +1290,7 @@ class SimulationPipeline:
                 if self._use_binary_protocol and self._send_binary_callback:
                     from app.engine.ws_binary_protocol import encode_signal_frame
                     vitals_delta = self._binary_encoder.compute_vitals_delta(current_vitals)
-                    causal_events_data = self._causal_tracker.recent(20)
+                    causal_events_data = self._causal_tracker.drain()
                     frame_bytes = encode_signal_frame(
                         seq=current_seq,
                         ecg_samples=ecg_chunk, pcg_samples=pcg_chunk,
@@ -1303,7 +1332,7 @@ class SimulationPipeline:
                     if physiology_detail is not None:
                         message["physiology_detail"] = physiology_detail
                     # Causal event stream
-                    causal_events = self._causal_tracker.recent(20)
+                    causal_events = self._causal_tracker.drain()
                     if causal_events:
                         message["causal_events"] = causal_events
                     try:

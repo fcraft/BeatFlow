@@ -75,13 +75,14 @@ class CausalTracker:
 
     Maintains a bounded circular buffer of CausalEvent instances.
     Thread-safe for single-producer (beat loop) access.
+    Uses drain() for WebSocket push to avoid re-sending already-pushed events.
     """
 
     def __init__(self, max_events: int = 200) -> None:
         self._max_events = max_events
         self._buffer: deque[CausalEvent] = deque(maxlen=max_events)
         self._stream_start_ms = time.monotonic() * 1000.0
-        self._last_parent_id: str | None = None
+        self._drain_cursor: int = 0
 
     def record(
         self,
@@ -114,10 +115,9 @@ class CausalTracker:
             delta=delta,
             mechanism=mechanism,
             confidence=confidence,
-            parent_event_id=parent_event_id or self._last_parent_id,
+            parent_event_id=parent_event_id,
         )
         self._buffer.append(event)
-        self._last_parent_id = event.id
         return event
 
     def record_chain(
@@ -156,15 +156,24 @@ class CausalTracker:
             events.append(event)
         return events
 
+    def drain(self) -> list[dict[str, Any]]:
+        """Return events recorded since the last drain() call.
+
+        Use this for WebSocket push — ensures each event is sent exactly once.
+        """
+        events = list(self._buffer)[self._drain_cursor:]
+        self._drain_cursor = len(self._buffer)
+        return [e.to_dict() for e in events]
+
     def recent(self, n: int = 20) -> list[dict[str, Any]]:
-        """Return the most recent n events as dicts (for WebSocket push)."""
+        """Return the most recent n events as dicts (for snapshot/init)."""
         items = list(self._buffer)[-n:]
         return [e.to_dict() for e in items]
 
     def clear(self) -> None:
         """Clear all recorded events."""
         self._buffer.clear()
-        self._last_parent_id = None
+        self._drain_cursor = 0
 
     def __len__(self) -> int:
-        return len(self._buffer)
+        return len(self._buffer) - self._drain_cursor
