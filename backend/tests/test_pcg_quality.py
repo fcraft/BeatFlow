@@ -89,10 +89,9 @@ class TestPcgFrequencyContent:
         freqs = np.fft.rfftfreq(len(frame.samples), 1/sr)
         spectrum = np.abs(np.fft.rfft(frame.samples))
         centroid = float(np.sum(freqs * spectrum) / (np.sum(spectrum) + 1e-12))
-        # Broadband background noise shifts the centroid upward from the
-        # pure heart-sound range (50-300 Hz) toward the Nyquist midpoint.
-        # With white noise at SR=4000 the centroid settles near 700-1100 Hz.
-        assert 200.0 < centroid < 1200.0, f"Spectral centroid {centroid:.0f} Hz outside 200-1200 Hz range"
+        # With stethoscope LP filtering (800 Hz) and reduced noise floor,
+        # the centroid correctly falls in the heart-sound range 50-300 Hz.
+        assert 50.0 < centroid < 300.0, f"Spectral centroid {centroid:.0f} Hz outside 50-300 Hz range"
 
 
 class TestPcgS2Splitting:

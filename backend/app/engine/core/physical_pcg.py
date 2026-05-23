@@ -27,19 +27,19 @@ PCG_SR = 4000
 # S1 resonator bank: 5 modes covering mitral + tricuspid closure
 # (freq Hz, Q, relative gain)
 S1_RESONATORS: list[tuple[float, float, float]] = [
-    (45.0, 8.0, 0.30),    # M1 — mitral component
-    (70.0, 12.0, 0.40),   # M1
-    (100.0, 15.0, 0.30),  # M1
-    (35.0, 6.0, 0.15),    # T1 — tricuspid component (slightly lower freq)
-    (55.0, 10.0, 0.15),   # T1
+    (45.0, 6.0, 0.30),    # M1 — mitral component
+    (70.0, 8.0, 0.40),    # M1
+    (100.0, 10.0, 0.30),  # M1  (Q reduced from 15: less ringing in systole)
+    (35.0, 5.0, 0.15),    # T1 — tricuspid component
+    (55.0, 7.0, 0.15),    # T1
 ]
 
 # S2 resonator bank: 4 modes covering aortic + pulmonic closure
 S2_RESONATORS: list[tuple[float, float, float]] = [
-    (80.0, 10.0, 0.30),   # A2 — aortic component
-    (120.0, 14.0, 0.35),  # A2
-    (160.0, 12.0, 0.20),  # A2
-    (90.0, 10.0, 0.15),   # P2 — pulmonic component (softer)
+    (80.0, 7.0, 0.30),    # A2 — aortic component
+    (120.0, 10.0, 0.35),  # A2 (Q reduced from 14)
+    (160.0, 8.0, 0.20),   # A2 (Q reduced from 12)
+    (90.0, 7.0, 0.15),    # P2 — pulmonic component
 ]
 
 # S3 resonator bank: low-frequency gallop (rapid filling)
@@ -55,9 +55,9 @@ S4_RESONATORS: list[tuple[float, float, float]] = [
     (35.0, 5.0, 0.30),
 ]
 
-_BACKGROUND_NOISE_AMP = 0.003
-_RESPIRATORY_NOISE_AMP = 0.002
-_MUSCLE_NOISE_AMP = 0.001
+_BACKGROUND_NOISE_AMP = 0.0005
+_RESPIRATORY_NOISE_AMP = 0.0004
+_MUSCLE_NOISE_AMP = 0.00025
 
 _IMPULSE_DURATION_MS = 8.0
 _IMPULSE_RISE_MS = 1.5
@@ -221,8 +221,15 @@ class PhysicalPcgSynthesizer:
 
         s1_amp = 0.8 * contractility * (1.0 - 0.3 * damage) * attenuation
         s1_amp = max(0.1, min(1.2, s1_amp))
-        s2_amp = 0.5 * (1.0 - 0.2 * damage) * attenuation
-        s2_amp = max(0.05, min(0.9, s2_amp))
+        # S2 base ~0.22× S1 base (real recordings: S1/S2 ≈ 4-5× at apex)
+        s2_amp = 0.22 * (1.0 - 0.2 * damage) * attenuation
+        # HR-dependent S2 attenuation: high HR → short diastole →
+        # reduced ventricular filling → quieter semilunar valve closure.
+        ref_diastole_ms = 689.0  # 1000ms RR - 311ms LVET at 60 BPM
+        actual_diastole_ms = max(0.0, rr_sec * 1000.0 - lvet_ms)
+        hr_s2_factor = min(1.0, (actual_diastole_ms / ref_diastole_ms) ** 0.3)
+        s2_amp *= hr_s2_factor
+        s2_amp = max(0.03, min(0.9, s2_amp))
 
         # --- Respiratory amplitude modulation ---
         resp_phase = modifiers.respiratory_phase
@@ -293,6 +300,17 @@ class PhysicalPcgSynthesizer:
         resp_env = 1.0 + 0.3 * np.sin(resp_phase_arr)
         pcm += self._rng.normal(0, _RESPIRATORY_NOISE_AMP, n_samples) * resp_env
         pcm += self._rng.normal(0, _MUSCLE_NOISE_AMP, n_samples)
+
+        # --- Stethoscope low-pass filter ---
+        # Real stethoscopes have steep mechanical rolloff above ~400-500 Hz.
+        # 6th-order Butterworth at 500 Hz approximates the acoustic transfer
+        # function of a Littmann-type stethoscope (bell + tubing).
+        try:
+            from scipy.signal import butter, sosfilt
+            sos = butter(6, 500.0, btype='low', fs=sr, output='sos')
+            pcm = sosfilt(sos, pcm)
+        except Exception:
+            pass
 
         # --- 4-band WDRC ---
         pcm = self._compressor.process(pcm)

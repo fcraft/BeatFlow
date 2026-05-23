@@ -141,5 +141,5 @@ def design_pcg_compressor(sample_rate: int = 4000) -> BandCompressor:
         attack_ms=5.0,
         release_ms=50.0,
         knee_db=6.0,
-        makeup_gains=[1.0, 1.0, 1.2, 1.5],
+        makeup_gains=[1.0, 1.0, 1.0, 1.1],
     )

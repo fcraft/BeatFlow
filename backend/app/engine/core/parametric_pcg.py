@@ -143,7 +143,7 @@ class ParametricPcgSynthesizer:
         s1_onset_ms = qrs_onset_ms + 30.0  # 30ms electromechanical delay
 
         # S2 onset: S1 + LVET(HR), Weissler: LVET = -1.7 × HR + 413 ms
-        lvet_ms = max(200.0, -1.7 * hr + 413.0)
+        lvet_ms = max(200.0, -1.7 * hr + 413.0)  # Weissler formula
         s2_onset_ms = s1_onset_ms + lvet_ms
 
         s1_onset_sample = int(s1_onset_ms / 1000.0 * sr)
@@ -160,8 +160,8 @@ class ParametricPcgSynthesizer:
 
         s1_amp = 0.6 * contractility * (1.0 - 0.3 * damage) * attenuation
         s1_amp = max(0.1, min(1.0, s1_amp))
-        s2_amp = 0.4 * (1.0 - 0.2 * damage) * attenuation
-        s2_amp = max(0.05, min(0.8, s2_amp))
+        s2_amp = 0.15 * (1.0 - 0.2 * damage) * attenuation
+        s2_amp = max(0.03, min(0.8, s2_amp))
 
         # --- S1: M1 + T1 ---
         _add_modal_burst(pcm, s1_onset_sample, M1_MODES, M1_DUR_MS, s1_amp, sr)
@@ -211,10 +211,12 @@ class ParametricPcgSynthesizer:
         pcm += self._rng.normal(0, _RESPIRATORY_NOISE_AMP, n_samples) * resp_env
         pcm += self._rng.normal(0, _MUSCLE_NOISE_AMP, n_samples)
 
-        # --- Stethoscope low-pass filter (800 Hz cutoff) ---
+        # --- Stethoscope low-pass filter ---
+        # 6th-order Butterworth at 500 Hz approximates real stethoscope
+        # acoustic rolloff (bell + tubing mechanical filtering).
         try:
             from scipy.signal import butter, sosfilt
-            sos = butter(4, 800.0, btype='low', fs=sr, output='sos')
+            sos = butter(6, 500.0, btype='low', fs=sr, output='sos')
             pcm = sosfilt(sos, pcm)
         except Exception:
             pass  # graceful degradation
