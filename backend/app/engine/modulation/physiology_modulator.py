@@ -233,7 +233,7 @@ def compute_modifiers(
     # ---- 3. Exercise effects (via physiological model or fallback) ----
     ex = m.exercise_intensity if interaction is not None else user_commands.get("exercise_intensity", 0.0)
 
-    if ex > 0.01 and state_ref is not None and hasattr(state_ref, '_exercise_model'):
+    if ex > 0.01 and state_ref is not None and getattr(state_ref, '_exercise_model', None) is not None:
         model = state_ref._exercise_model
         hr_delta = model.compute_hr_delta(
             intensity=ex,

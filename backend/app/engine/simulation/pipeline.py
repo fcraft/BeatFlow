@@ -614,6 +614,11 @@ class SimulationPipeline:
         if self._hemo is None:
             self._hemo = AlgebraicHemodynamics()
 
+        if self._use_causal_graph and self._causal_graph is None:
+            from app.engine.modulation.causal_graph import create_default_graph
+            self._causal_graph = create_default_graph()
+            logger.info("Causal graph engine initialised (default on)")
+
     def set_pcg_engine_mode(self, mode: str) -> None:
         """Switch PCG engine between 'parametric' and 'physical'."""
         if mode not in ('parametric', 'physical'):
