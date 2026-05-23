@@ -137,7 +137,7 @@ class EcgSynthesizerV2:
                 'pr_interval_ms': conduction.pr_interval_ms,
                 'qrs_duration_ms': conduction.qrs_duration_ms,
                 'qt_interval_ms': conduction.qt_interval_ms,
-                'p_wave_present': conduction.p_wave_present,
+                'p_wave_mode': conduction.p_wave_mode,
                 'conducted': conduction.conducted,
             }
         ]
@@ -212,21 +212,37 @@ class EcgSynthesizerV2:
         # ==============================================================
         # P WAVE — atrial depolarisation
         # ==============================================================
-        # SA node fires at t_p; atrial depolarisation wavefront spreads over
-        # ~60-80ms, peaking on the surface ECG at ~40-50ms post-firing.
-        # P-wave visible width ≈ 4σ, targeting 80-100ms total duration.
-        if conduction.p_wave_present:
+        p_mode = conduction.p_wave_mode
+
+        if p_mode == "normal":
+            # Forward P-wave: SA node fires ~45ms before surface P peak.
+            # Atrial depolarisation spreads right→left, superior→inferior,
+            # producing upright P in II/Y and biphasic P in V1/Z.
             t_p = act_times['sa']
-            t_p_peak = t_p + 0.045  # peak 45ms after SA firing
-            # X: positive (atria depolarise left)
+            t_p_peak = t_p + 0.045
             x += _g(t, t_p_peak, sigma=0.022, amplitude=0.08)
             x += _g(t, t_p_peak + 0.040, sigma=0.020, amplitude=0.02)
-            # Y: positive (atria depolarise inferiorly)
             y += _g(t, t_p_peak, sigma=0.022, amplitude=0.12)
             y += _g(t, t_p_peak + 0.040, sigma=0.020, amplitude=0.03)
-            # Z: biphasic — positive then negative (classic V1 P-wave)
             z += _g(t, t_p_peak, sigma=0.020, amplitude=0.06)
             z += _g(t, t_p_peak + 0.040, sigma=0.018, amplitude=-0.04)
+
+        elif p_mode == "retrograde":
+            # Retrograde P-wave: atrial activation travels UP the AV node
+            # → inverted P in inferior leads (Y), often buried in terminal
+            # QRS or early ST segment (~60-80ms after QRS onset).
+            t_rp = act_times['his'] + 0.065
+            # Y (Lead II): inverted (negative) — hallmark of AVNRT/AVRT
+            y += _g(t, t_rp, sigma=0.016, amplitude=-0.08)
+            y += _g(t, t_rp + 0.020, sigma=0.012, amplitude=-0.03)
+            # X: shallow inverted
+            x += _g(t, t_rp, sigma=0.016, amplitude=-0.04)
+            # Z (V1): pseudo-r' — small positive deflection
+            z += _g(t, t_rp, sigma=0.016, amplitude=0.04)
+
+        # absent: no P-wave (AF, VF, asystole)
+        # dissociated: P-waves exist at independent rate — skip for now
+        #   (would need separate atrial timer tracking)
 
         # ==============================================================
         # QRS COMPLEX — ventricular depolarisation
@@ -428,8 +444,8 @@ class EcgSynthesizerV2:
 
         act_times = {k: v / 1000.0 for k, v in conduction.activation_times.items()}
 
-        # P-wave (if present)
-        if conduction.p_wave_present:
+        # P-wave (only for normal forward conduction, not VT)
+        if conduction.p_wave_mode == "normal":
             t_p = act_times['sa']
             x += _g(t, t_p, sigma=0.040, amplitude=0.08)
             y += _g(t, t_p, sigma=0.040, amplitude=0.12)

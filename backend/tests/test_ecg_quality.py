@@ -21,7 +21,7 @@ def _make_default_conduction(rr_sec=0.8):
             'his': ActionPotential(apd_ms=300), 'purkinje': ActionPotential(apd_ms=300),
         },
         pr_interval_ms=120.0, qrs_duration_ms=80.0, qt_interval_ms=380.0,
-        p_wave_present=True, p_wave_retrograde=False,
+        p_wave_mode="normal",
         beat_kind='sinus', conducted=True,
     )
 

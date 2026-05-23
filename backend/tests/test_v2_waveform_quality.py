@@ -217,7 +217,7 @@ class TestEcgMorphologyQuality:
             assert p_peak > 0.02, (
                 f"P wave peak {p_peak:.4f} mV too small (expected > 0.02 mV)"
             )
-        assert result.p_wave_present is True
+        assert result.p_wave_mode == "normal"
 
     def test_qrs_amplitude_and_duration(self):
         """R-peak amplitude 0.5-4.0 mV, QRS duration 60-120ms."""
@@ -292,8 +292,8 @@ class TestEcgMorphologyQuality:
         mods = Modifiers(rhythm_override='af')
         rr_sec = 60.0 / 72.0
         result = cond.propagate(rr_sec, mods)
-        assert result.p_wave_present is False, (
-            "AF beat should not have p_wave_present=True"
+        assert result.p_wave_mode == "absent", (
+            "AF beat should not have p_wave_mode='normal'"
         )
 
     def test_wide_qrs_in_vt(self):

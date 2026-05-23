@@ -7,6 +7,7 @@ mutable because it's recomputed each beat by PhysiologyModulator.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Literal, Optional
 
 import numpy as np
@@ -18,6 +19,20 @@ BeatKind = Literal['sinus', 'pvc', 'svt', 'escape', 'vt', 'vf', 'paced', 'af', '
 ValveName = Literal['mitral', 'aortic', 'tricuspid', 'pulmonary']
 ValveAction = Literal['open', 'close']
 ConductionNode = Literal['sa', 'av', 'his', 'purkinje']
+
+
+class PWaveMode(str, Enum):
+    """P-wave behaviour per rhythm type.
+
+    NORMAL:      Forward P-wave before QRS (sinus, escape, PVC with compensatory pause)
+    ABSENT:      No organised atrial activity (AF, VF, asystole)
+    RETROGRADE:  Inverted P-wave buried in or just after QRS (SVT, junctional)
+    DISSOCIATED: Atria and ventricles beat independently (VT, complete heart block)
+    """
+    NORMAL = "normal"
+    ABSENT = "absent"
+    RETROGRADE = "retrograde"
+    DISSOCIATED = "dissociated"
 
 
 @dataclass(frozen=True)
@@ -59,10 +74,9 @@ class ConductionResult:
     pr_interval_ms: float
     qrs_duration_ms: float
     qt_interval_ms: float
-    p_wave_present: bool
-    p_wave_retrograde: bool
-    beat_kind: BeatKind
-    conducted: bool
+    p_wave_mode: str = "normal"   # PWaveMode value
+    beat_kind: BeatKind = "sinus"
+    conducted: bool = True
 
 
 @dataclass(frozen=True)

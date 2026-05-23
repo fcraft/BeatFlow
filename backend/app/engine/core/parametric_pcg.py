@@ -184,7 +184,7 @@ class ParametricPcgSynthesizer:
             _add_modal_burst(pcm, s3_onset, S3_MODES, S3_DUR_MS, s3_amp, sr)
 
         # --- S4 gallop (damage > 0.5) ---
-        s4_present = damage > 0.5 and conduction.p_wave_present
+        s4_present = damage > 0.5 and conduction.p_wave_mode != "absent"
         if s4_present:
             sa_ms = act_times.get('sa', 0.0)
             s4_onset_ms = sa_ms + 60.0

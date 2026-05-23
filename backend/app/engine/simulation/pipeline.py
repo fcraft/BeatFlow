@@ -964,7 +964,7 @@ class SimulationPipeline:
             "pr_interval_ms": round(conduction.pr_interval_ms, 1),
             "qrs_duration_ms": round(conduction.qrs_duration_ms, 1),
             "qt_interval_ms": round(conduction.qt_interval_ms, 1),
-            "p_wave_present": conduction.p_wave_present,
+            "p_wave_mode": conduction.p_wave_mode,
             "conducted": conduction.conducted,
             "instantaneous_hr": round(hemo.heart_rate, 1),
         }

@@ -397,8 +397,7 @@ def _parametric_template(
     *,
     pr_interval_ms: float = 160.0,
     qrs_duration_ms: float = 90.0,
-    p_wave_present: bool = True,
-    p_wave_retrograde: bool = False,
+    p_wave_mode: str = "normal",
     heart_rate: float = 72.0,
 ) -> tuple[np.ndarray, int]:
     """
@@ -411,8 +410,7 @@ def _parametric_template(
         sr: 采样率 (Hz)
         pr_interval_ms: PR 间期 (ms)，控制 P 波到 QRS 的距离
         qrs_duration_ms: QRS 时限 (ms)，控制 QRS 宽度
-        p_wave_present: 是否生成 P 波（AF 时为 False）
-        p_wave_retrograde: 逆行 P 波（SVT 特征，P 波倒置且在 QRS 之后）
+        p_wave_mode: P 波模式 (normal/absent/retrograde/dissociated)
         heart_rate: 心率 (bpm)，用于 Bazett QT 计算和模板长度
 
     返回:
@@ -440,20 +438,19 @@ def _parametric_template(
     template = np.zeros(n, dtype=np.float64)
 
     # ── P 波 ────────────────────────────────────────────────────
-    if p_wave_present:
-        if p_wave_retrograde:
-            p_center = 0.05
-            template += gauss(p_center, 0.018, -0.12)
-            template += gauss(p_center + 0.015, 0.012, -0.06)
-        else:
-            pr_sec = pr_interval_ms / 1000.0
-            p_center = -(pr_sec - 0.040)
-            p_center = max(-pre_sec + 0.02, min(-0.04, p_center))
-            # 高心率时 P 波稍窄
-            p_width = min(0.038, rr_sec * 0.06)
-            p_width = max(0.015, p_width)
-            template += gauss(p_center, p_width, 0.10)
-            template += gauss(p_center + 0.03 * min(1.0, rr_sec), 0.028 * min(1.0, rr_sec / 0.6), 0.05)
+    if p_wave_mode == "normal":
+        pr_sec = pr_interval_ms / 1000.0
+        p_center = -(pr_sec - 0.040)
+        p_center = max(-pre_sec + 0.02, min(-0.04, p_center))
+        p_width = min(0.038, rr_sec * 0.06)
+        p_width = max(0.015, p_width)
+        template += gauss(p_center, p_width, 0.10)
+        template += gauss(p_center + 0.03 * min(1.0, rr_sec), 0.028 * min(1.0, rr_sec / 0.6), 0.05)
+    elif p_wave_mode == "retrograde":
+        p_center = 0.05
+        template += gauss(p_center, 0.018, -0.12)
+        template += gauss(p_center + 0.015, 0.012, -0.06)
+    # absent / dissociated: skip P-wave
 
     # ── QRS 复合波 ──────────────────────────────────────────────
     qrs_scale = qrs_duration_ms / 90.0

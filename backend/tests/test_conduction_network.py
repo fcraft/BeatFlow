@@ -28,10 +28,9 @@ class TestNormalSinusRhythm:
         result = network.propagate(0.833, Modifiers())
         assert 300 <= result.qt_interval_ms <= 500, f"QT={result.qt_interval_ms}ms"
 
-    def test_p_wave_present(self, network):
+    def test_p_wave_mode_normal(self, network):
         result = network.propagate(0.833, Modifiers())
-        assert result.p_wave_present is True
-        assert result.p_wave_retrograde is False
+        assert result.p_wave_mode == "normal"
 
     def test_activation_times_sequential(self, network):
         result = network.propagate(0.833, Modifiers())
@@ -77,3 +76,26 @@ class TestStateManagement:
         r1 = network.propagate(0.833, Modifiers())
         r2 = new_net.propagate(0.833, Modifiers())
         assert abs(r1.pr_interval_ms - r2.pr_interval_ms) < 5.0
+
+
+class TestPWaveMode:
+    """P-wave mode is set correctly for each rhythm type."""
+
+    def test_sinus_has_normal_p_wave(self, network):
+        result = network.propagate(0.833, Modifiers())
+        assert result.p_wave_mode == "normal"
+
+    def test_af_has_absent_p_wave(self, network):
+        mods = Modifiers(rhythm_override='af')
+        result = network.propagate(0.833, mods)
+        assert result.p_wave_mode == "absent"
+
+    def test_svt_has_retrograde_p_wave(self, network):
+        mods = Modifiers(rhythm_override='svt')
+        result = network.propagate(0.833, mods)
+        assert result.p_wave_mode == "retrograde"
+
+    def test_vt_has_dissociated_p_wave(self, network):
+        mods = Modifiers(rhythm_override='vt')
+        result = network.propagate(0.833, mods)
+        assert result.p_wave_mode == "dissociated"

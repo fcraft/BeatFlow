@@ -111,7 +111,6 @@ class ParametricConductionNetwork:
 
         # --- AV Block logic ---
         conducted = True
-        p_wave_present = True
 
         if avb >= 1:
             if avb == 1:
@@ -124,9 +123,12 @@ class ParametricConductionNetwork:
             elif avb == 3:
                 conducted = False
 
-        # AF: no organized P wave
+        # --- P-wave mode per rhythm ---
+        p_wave_mode = "normal"
         if rhythm == 'af':
-            p_wave_present = False
+            p_wave_mode = "absent"
+        elif rhythm == 'svt':
+            p_wave_mode = "retrograde"
 
         # --- Compute intervals ---
         total_ms = rr_sec * 1000.0
@@ -199,8 +201,7 @@ class ParametricConductionNetwork:
             pr_interval_ms=pr_ms,
             qrs_duration_ms=qrs_ms,
             qt_interval_ms=qt_ms,
-            p_wave_present=p_wave_present and rhythm != 'af',
-            p_wave_retrograde=False,
+            p_wave_mode=p_wave_mode,
             beat_kind=beat_kind,
             conducted=conducted,
         )
@@ -223,7 +224,7 @@ class ParametricConductionNetwork:
             activation_times={name: 0.0 for name in _NODE_ORDER},
             node_aps=node_aps,
             pr_interval_ms=0.0, qrs_duration_ms=0.0, qt_interval_ms=0.0,
-            p_wave_present=False, p_wave_retrograde=False,
+            p_wave_mode="absent",
             beat_kind='vf', conducted=False,
         )
 
@@ -239,7 +240,7 @@ class ParametricConductionNetwork:
             activation_times={name: total_ms for name in _NODE_ORDER},
             node_aps=node_aps,
             pr_interval_ms=0.0, qrs_duration_ms=0.0, qt_interval_ms=0.0,
-            p_wave_present=False, p_wave_retrograde=False,
+            p_wave_mode="absent",
             beat_kind='asystole', conducted=False,
         )
 
@@ -265,7 +266,7 @@ class ParametricConductionNetwork:
             },
             node_aps=node_aps,
             pr_interval_ms=0.0, qrs_duration_ms=qrs_ms, qt_interval_ms=qt_ms,
-            p_wave_present=False, p_wave_retrograde=False,
+            p_wave_mode="dissociated",
             beat_kind='vt', conducted=True,
         )
 
