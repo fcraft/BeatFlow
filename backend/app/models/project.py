@@ -151,6 +151,38 @@ class Annotation(Base):
         }
 
 
+class OperationLog(Base):
+    """标注操作日志 — 记录标注的增/删/改/接受操作，支持撤销"""
+    __tablename__ = "operation_logs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    file_id = Column(UUID(as_uuid=True), ForeignKey("media_files.id"), nullable=False, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    operation_type = Column(String(20), nullable=False)   # accept | delete | batch_delete | create | update | undo
+    description = Column(String(500), nullable=False)      # "接受了 5 个标注"
+    details = Column(JSON, default=dict, nullable=False)   # 快照数据（用于恢复）
+    is_undone = Column(Boolean, default=False, nullable=False)
+    undone_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    # 关系
+    file = relationship("MediaFile", backref="operation_logs")
+    user = relationship("User", backref="operation_logs")
+
+    def to_dict(self):
+        return {
+            "id": str(self.id),
+            "file_id": str(self.file_id),
+            "user_id": str(self.user_id),
+            "operation_type": self.operation_type,
+            "description": self.description,
+            "details": self.details or {},
+            "is_undone": self.is_undone,
+            "undone_at": self.undone_at.isoformat() if self.undone_at else None,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
 class AnalysisResult(Base):
     """分析结果模型"""
     __tablename__ = "analysis_results"

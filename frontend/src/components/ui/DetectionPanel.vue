@@ -41,33 +41,6 @@
       </div>
     </div>
 
-    <!-- Wave Types to Detect -->
-    <div v-if="fileType">
-      <label class="label mb-2 block">检测波形</label>
-      <div class="flex flex-wrap gap-2">
-        <label
-          v-for="wt in availableWaveTypes"
-          :key="wt.id"
-          class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border cursor-pointer text-xs font-medium transition-colors"
-          :class="selectedWaveTypes.includes(wt.id)
-            ? `border-${wt.color}-400 bg-${wt.color}-50 text-${wt.color}-700`
-            : 'border-gray-200 text-gray-500 hover:border-gray-300'"
-        >
-          <input
-            type="checkbox"
-            :value="wt.id"
-            v-model="selectedWaveTypes"
-            class="sr-only"
-          />
-          <span
-            class="w-2 h-2 rounded-full"
-            :style="{ backgroundColor: wt.hex }"
-          />
-          {{ wt.label }}
-        </label>
-      </div>
-    </div>
-
     <!-- Action Buttons -->
     <div class="flex items-center gap-2 pt-1">
       <button
@@ -114,6 +87,7 @@ const props = defineProps<{
   fileId: string
   fileType: string   // 'pcg' | 'audio' | 'ecg' | ''
   authHeader: Record<string, string>
+  isS1Only: boolean
 }>()
 
 const emit = defineEmits<{
@@ -159,41 +133,16 @@ const algorithms = [
 ]
 
 // ── Wave type definitions ─────────────────────────────────────────────────
-const ECG_WAVE_TYPES = [
-  { id: 'qrs',    label: 'QRS',   color: 'red',    hex: '#ef4444' },
-  { id: 'p_wave', label: 'P 波', color: 'blue',   hex: '#3b82f6' },
-  { id: 't_wave', label: 'T 波', color: 'green',  hex: '#22c55e' },
-  { id: 'q_wave', label: 'Q 波', color: 'orange', hex: '#f97316' },
-  { id: 's_wave', label: 'S 波', color: 'violet', hex: '#8b5cf6' },
-]
-
-const PCG_WAVE_TYPES = [
-  { id: 's1', label: 'S1', color: 'blue',  hex: '#3b82f6' },
-  { id: 's2', label: 'S2', color: 'green', hex: '#22c55e' },
-]
-
-const availableWaveTypes = computed(() =>
-  props.fileType === 'ecg' ? ECG_WAVE_TYPES : PCG_WAVE_TYPES
-)
+const isPCG = computed(() => props.fileType === 'pcg' || props.fileType === 'audio')
 
 // ── State ─────────────────────────────────────────────────────────────────
 const selectedAlgorithm = ref('auto')
-const selectedWaveTypes = ref<string[]>([])
 const running = ref(false)
 const lastResult = ref<{
   algorithm: string
   count: number
   breakdown: string[]
 } | null>(null)
-
-// Initialize wave types when file type changes
-watch(() => props.fileType, (ft) => {
-  if (ft === 'ecg') {
-    selectedWaveTypes.value = ['qrs', 'p_wave', 't_wave']
-  } else {
-    selectedWaveTypes.value = ['s1', 's2']
-  }
-}, { immediate: true })
 
 // Disable wfdb for PCG (it only supports ECG)
 watch(selectedAlgorithm, (algo) => {
@@ -203,7 +152,7 @@ watch(selectedAlgorithm, (algo) => {
 })
 
 const canRun = computed(() =>
-  !!props.fileId && !!props.fileType && selectedWaveTypes.value.length > 0
+  !!props.fileId && !!props.fileType
 )
 
 // ── Detection ─────────────────────────────────────────────────────────────
@@ -212,7 +161,8 @@ const runDetect = async () => {
   running.value = true
   try {
     const params = new URLSearchParams({ algorithm: selectedAlgorithm.value })
-    const r = await fetch(`/api/v1/files/${props.fileId}/detect?${params}`, {
+    if (props.isS1Only) params.set('s1_only', 'true')
+    const r = await fetch(`/api/v1/files/${props.fileId}/detect/preview?${params}`, {
       method: 'POST',
       headers: props.authHeader,
     })
@@ -223,12 +173,7 @@ const runDetect = async () => {
     }
     const data = await r.json()
 
-    // Filter items by selected wave types
-    const filtered = selectedWaveTypes.value.length > 0
-      ? data.items.filter((it: any) => selectedWaveTypes.value.includes(it.annotation_type))
-      : data.items
-
-    // Count per type
+    // Count per type for result summary
     const counts: Record<string, number> = {}
     for (const item of data.items) {
       counts[item.annotation_type] = (counts[item.annotation_type] ?? 0) + 1
@@ -251,7 +196,7 @@ const runDetect = async () => {
   }
 }
 
-// Expose for parent to reset
+// Expose for parent to reset / read s1_only state
 const reset = () => { lastResult.value = null }
 defineExpose({ reset })
 </script>

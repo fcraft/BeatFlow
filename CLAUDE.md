@@ -48,9 +48,10 @@ BeatFlow 是 ECG/PCG 心音心电数据管理平台。
 ### 1. 运行后端测试
 ```bash
 cd /qqvip/proj/BeatFlow/backend
-.venv/bin/pytest tests/ -v --ignore=tests/test_ws_endpoint.py
+.venv/bin/pytest tests/ -v --ignore=tests/test_ws_endpoint.py --ignore=tests/test_annotation_operation_logs.py
 ```
 - 所有测试必须通过（test_ws_endpoint.py 需要运行中的服务端，可单独跑）
+- test_annotation_operation_logs.py 需单独运行（见下方"测试分类说明"）
 - 若修改了引擎/模型/API，须编写对应的 pytest 用例
 
 ### 2. 运行前端单元测试
@@ -96,8 +97,31 @@ npx playwright test e2e/
 | 层 | 框架 | 配置文件 | 测试目录 |
 |----|------|----------|----------|
 | 后端单元测试 | pytest + pytest-asyncio | `backend/pytest.ini` | `backend/tests/` |
+| 后端 DB 集成测试 | pytest + asyncio.run() | `backend/pytest.ini` | `backend/tests/test_annotation_operation_logs.py` |
 | 前端单元测试 | vitest + @vue/test-utils | `frontend/vitest.config.ts` | `frontend/src/**/*.spec.ts` |
 | E2E 测试 | Playwright | `frontend/playwright.config.ts` | `frontend/e2e/` |
+
+### 测试分类说明
+
+**后端测试分为两类，需分开执行：**
+
+#### 常规测试（pytest-asyncio 管理 event loop）
+```bash
+cd /qqvip/proj/BeatFlow/backend
+.venv/bin/pytest tests/ -v --ignore=tests/test_ws_endpoint.py --ignore=tests/test_annotation_operation_logs.py
+```
+覆盖：引擎、分析模块、管道、存储、HTTP 范围流等。
+
+#### DB 集成测试（asyncio.run() 管理 event loop）
+```bash
+cd /qqvip/proj/BeatFlow/backend
+.venv/bin/pytest tests/test_annotation_operation_logs.py -v
+```
+覆盖：OperationLog 模型、日志埋点（create/delete/update/batch_delete/accept）、查询、撤销（正常路径 + 边界条件）。
+
+> **为什么分开？** `test_annotation_operation_logs.py` 使用 `asyncio.run()` 自管理 event loop，
+> 与 pytest-asyncio 的全局 event loop 管理冲突。两者在同一进程中无法共存。
+> 该文件 21 项测试验证快照完整性、undo 正确性和边界条件，逻辑完备。
 
 ---
 

@@ -76,22 +76,21 @@
           <div ref="waveContainer"
             class="relative bg-gray-50 rounded-lg overflow-hidden select-none"
             style="height:180px"
-            :style="{ cursor: waveDragging ? 'grabbing' : 'grab' }"
+            :style="{ cursor: waveCursor }"
             @wheel.prevent="onWheel"
-            @mousedown="onWaveMouseDown"
+            @contextmenu.prevent
+            @mousedown.left="onWaveMouseDown"
+            @mousedown.right="onWaveRightClick"
             @mousemove="onWaveMouseMove"
-            @mouseleave="onWaveMouseLeave">
+            @mouseleave="onWaveMouseLeave"
+            @mouseup.left="onWaveMouseUp">
             <canvas ref="canvas" class="absolute inset-0 w-full h-full" />
             <div v-if="isPlaying || playPos > 0" class="absolute top-0 bottom-0 w-px bg-orange-400 pointer-events-none"
               :style="{ left: playheadX + 'px' }" />
-            <div v-if="hoveredAnnotation"
+            <div v-if="hoveredTooltipText"
               class="absolute pointer-events-none z-10 bg-gray-900 text-white text-xs rounded px-2 py-1 whitespace-nowrap shadow-lg"
-              :style="{ left: Math.min(tooltipX, waveContainerW - 150) + 'px', top: '8px' }">
-              <span class="font-bold">{{ hoveredAnnotation.annotation_type.toUpperCase() }}</span>
-              <span v-if="hoveredAnnotation.label" class="opacity-70 ml-1">{{ hoveredAnnotation.label }}</span>
-              <span class="opacity-50 ml-2">{{ hoveredAnnotation.start_time.toFixed(3) }}s – {{ (hoveredAnnotation.end_time ?? hoveredAnnotation.start_time).toFixed(3) }}s</span>
-              <span v-if="hoveredAnnotation.confidence != null" class="opacity-50 ml-2">{{ (hoveredAnnotation.confidence * 100).toFixed(0) }}%</span>
-            </div>
+              :style="{ left: Math.min(tooltipX, waveContainerW - 150) + 'px', top: '8px' }"
+              v-html="hoveredTooltipText" />
             <div v-if="!loadingWaveform && waveform.length === 0"
               class="absolute inset-0 flex items-center justify-center text-sm text-gray-400 gap-2">
               <BarChart2 class="w-4 h-4" />暂无波形数据
@@ -148,13 +147,6 @@
           <div class="flex items-center justify-between mb-4">
             <div>
               <h3 class="text-sm font-semibold text-gray-900">自动检测</h3>
-              <p class="text-xs text-gray-400 mt-0.5">
-                <template v-if="detectConfig">
-                  支持检测：
-                  <span v-for="t in detectConfig.types" :key="t" class="inline-block mr-1 px-1.5 py-0.5 rounded text-xs font-mono" :class="annotationBadge(t)">{{ t.toUpperCase() }}</span>
-                </template>
-                <template v-else>当前文件类型不支持自动检测，请先修改类型为 PCG / Audio / ECG</template>
-              </p>
             </div>
             <!-- Expand/collapse settings -->
             <button class="btn-ghost btn-sm text-gray-500 flex items-center gap-1" @click="showDetectPanel = !showDetectPanel">
@@ -162,12 +154,34 @@
               {{ showDetectPanel ? '收起设置' : '展开设置' }}
             </button>
           </div>
+
+          <!-- Wave type filter chips — always visible -->
+          <div v-if="detectConfig" class="flex flex-wrap items-center gap-2 mb-3">
+            <span class="text-xs text-gray-400 shrink-0">检测类型</span>
+            <button
+              v-for="wt in availableWaveTypes"
+              :key="wt.id"
+              class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border cursor-pointer text-xs font-medium transition-colors"
+              :class="selectedWaveTypes.includes(wt.id)
+                ? `border-${wt.color}-400 bg-${wt.color}-50 text-${wt.color}-700`
+                : 'border-gray-200 text-gray-500 hover:border-gray-300'"
+              @click="toggleWaveType(wt.id)"
+            >
+              <span class="w-2 h-2 rounded-full" :style="{ backgroundColor: wt.hex }" />
+              {{ wt.label }}
+            </button>
+            <span v-if="isPCG && isS1Only" class="text-xs text-amber-500 ml-1">（仅S1模式）</span>
+          </div>
+          <p v-else class="text-xs text-gray-400">当前文件类型不支持自动检测，请先修改类型为 PCG / Audio / ECG</p>
+
           <template v-if="detectConfig">
             <DetectionPanel
+              ref="detectPanelRef"
               v-if="showDetectPanel"
               :file-id="fileId"
               :file-type="file.file_type"
               :auth-header="authHeader"
+              :is-s1-only="isS1Only.value"
               @detected="onDetected"
               @clear="clearAutoAnnotations"
               @error="(msg) => toast.error(msg)"
@@ -186,6 +200,9 @@
             </div>
           </template>
         </div>
+
+        <!-- Review panel (shown after detection preview) -->
+        <ReviewPanel ref="reviewPanelRef" @accepted="onReviewAccepted" @rejected="onReviewRejected" />
 
         <!-- BPM Analysis -->
         <div v-if="bpmAnnotations.length >= 2" class="card p-5 mb-5">
@@ -226,6 +243,45 @@
               <button class="btn-primary btn-sm" @click="openAddModal(null)">
                 <Plus class="w-3.5 h-3.5" />添加标记
               </button>
+              <button
+                class="btn-ghost btn-sm text-gray-500 relative"
+                @click="showingHistoryPanel = !showingHistoryPanel"
+              >
+                <Clock class="w-3.5 h-3.5" />
+                {{ showingHistoryPanel ? '隐藏' : '操作历史' }}
+                <span
+                  v-if="operationLogs.length"
+                  class="ml-1 px-1 py-0.5 rounded-full text-xs bg-gray-200 text-gray-600"
+                >{{ operationLogs.length }}</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Operation History Panel -->
+          <div v-if="showingHistoryPanel" class="mb-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
+            <h4 class="text-xs font-semibold text-gray-700 mb-2">操作历史</h4>
+            <div v-if="loadingLogs" class="text-center py-3 text-gray-400 text-xs">加载中…</div>
+            <div v-else-if="!operationLogs.length" class="text-center py-3 text-gray-400 text-xs">暂无操作记录</div>
+            <div v-else class="space-y-1.5 max-h-60 overflow-y-auto">
+              <div
+                v-for="log in operationLogs"
+                :key="log.id"
+                class="flex items-center justify-between py-1.5 px-2.5 rounded text-xs"
+                :class="log.is_undone ? 'bg-gray-100 opacity-60' : 'bg-white'"
+              >
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-1.5">
+                    <span class="font-medium text-gray-700 truncate">{{ log.description }}</span>
+                    <span v-if="log.is_undone" class="text-orange-500 shrink-0">(已撤销)</span>
+                  </div>
+                  <span class="text-gray-400">{{ new Date(log.created_at).toLocaleString('zh-CN') }}</span>
+                </div>
+                <button
+                  v-if="!log.is_undone && ['accept','delete','batch_delete'].includes(log.operation_type)"
+                  class="btn-ghost btn-xs text-blue-500 ml-2 shrink-0"
+                  @click="undoOperation(log.id)"
+                >撤销</button>
+              </div>
             </div>
           </div>
 
@@ -439,6 +495,7 @@
                 <div class="flex-1 relative rounded overflow-hidden"
                   style="height:80px"
                   :style="{ cursor: laneCursor(laneIdx) }"
+                  @contextmenu.prevent="onLaneRightClick(laneIdx, $event)"
                   @mousemove="onLaneMouseMove(laneIdx, $event)"
                   @mouseleave="onLaneMouseLeave"
                   @mousedown="onLaneMouseDown(laneIdx, $event)"
@@ -674,6 +731,9 @@
         </Transition>
       </Teleport>
     </div>
+
+    <!-- Context menu -->
+    <ContextMenu ref="contextMenu" :items="contextMenuItems" @close="contextMenuItems = []" />
   </AppLayout>
 </template>
 
@@ -684,20 +744,41 @@ import {
   ChevronLeft, ChevronRight, Download, BarChart2, Plus, Trash2, Tag,
   HardDrive, Clock, Cpu, Layers, Calendar, Music, Video,
   Activity, File, Pencil, Zap, CheckCircle2, ZoomIn, ZoomOut, Maximize2,
-  Play, Pause, Volume2, Expand, X, ArrowUpDown, Crosshair, Share2, Settings,
-  TrendingUp,
+  Play, Pause, Volume2, Expand, X, ArrowUpDown, Crosshair, Share2, Settings, TrendingUp, Star, Check,
 } from 'lucide-vue-next'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import AppModal from '@/components/ui/AppModal.vue'
 import DetectionPanel from '@/components/ui/DetectionPanel.vue'
+import ReviewPanel from '@/components/ui/ReviewPanel.vue'
 import BpmPanel from '@/components/ui/BpmPanel.vue'
+import ContextMenu from '@/components/ui/ContextMenu.vue'
+import type { ContextMenuItem } from '@/components/ui/ContextMenu.vue'
 import { useToastStore } from '@/store/toast'
+import { useAnnotationReviewStore } from '@/store/annotationReview'
+import { useUndoRedo } from '@/composables/useUndoRedo'
+import { useRegionSelection } from '@/composables/useRegionSelection'
+import { useAnnotationSelection } from '@/composables/useAnnotationSelection'
 
 const route = useRoute()
 const toast = useToastStore()
 const fileId = route.params.id as string
 const token = localStorage.getItem('token')
 const authHeader = { Authorization: `Bearer ${token}` }
+
+// ── Stores & composables ──────────────────────────────────────────
+const reviewStore = useAnnotationReviewStore()
+const undoRedo = useUndoRedo()
+const regionSel = useRegionSelection()
+const annSel = useAnnotationSelection()
+
+// ── Context menu ──────────────────────────────────────────────────
+const contextMenu = ref<InstanceType<typeof ContextMenu> | null>(null)
+const contextMenuItems = ref<ContextMenuItem[]>([])
+
+const showContextMenu = (e: MouseEvent, items: ContextMenuItem[]) => {
+  contextMenuItems.value = items
+  contextMenu.value?.show(e.clientX, e.clientY)
+}
 
 // ── Core data ─────────────────────────────────────────────────────
 const file = ref<any>(null)
@@ -708,6 +789,9 @@ const waveform = ref<number[]>([])           // overview：全文件低分辨率
 const detailSamples = ref<number[]>([])       // detail：当前视口高分辨率数据
 const detailRange = ref<{ start: number; end: number } | null>(null)  // detail 对应的时间范围（秒）
 const annotations = ref<any[]>([])
+const operationLogs = ref<any[]>([])
+const showingHistoryPanel = ref(false)
+const loadingLogs = ref(false)
 const totalDuration = ref(0)
 
 // ── Detail fetch debounce ──────────────────────────────────────────
@@ -849,6 +933,11 @@ const viewEnd = ref(1)
 const MIN_VIEW_WIDTH = 0.005
 
 const viewWindow = computed(() => viewEnd.value - viewStart.value)
+const waveCursor = computed(() =>
+  regionSel.selecting.value ? 'crosshair' :
+  waveDragging.value ? 'grabbing' :
+  'grab'
+)
 const ANNOTATION_ZOOM_THRESHOLD = 0.20
 const showAnnotationsOnWave = computed(() => viewWindow.value <= ANNOTATION_ZOOM_THRESHOLD)
 const zoomLabel = computed(() => { const s = 1 / viewWindow.value; return s < 10 ? `${s.toFixed(1)}×` : `${Math.round(s)}×` })
@@ -861,7 +950,76 @@ const scrollbarWidth = computed(() => viewWindow.value * 100)
 
 // ── Tooltip (small) ───────────────────────────────────────────────
 const hoveredAnnotation = ref<any>(null)
+const hoveredReviewId = ref<string | null>(null)
 const tooltipX = ref(0)
+const reviewPanelRef = ref<InstanceType<typeof ReviewPanel> | null>(null)
+const detectPanelRef = ref<InstanceType<typeof DetectionPanel> | null>(null)
+
+// ── Wave type filter (moved out of DetectionPanel for always-visible access) ──
+const ECG_WAVE_TYPES = [
+  { id: 'qrs', label: 'QRS', color: 'red', hex: '#ef4444' },
+  { id: 'p_wave', label: 'P 波', color: 'blue', hex: '#3b82f6' },
+  { id: 't_wave', label: 'T 波', color: 'green', hex: '#22c55e' },
+  { id: 'q_wave', label: 'Q 波', color: 'orange', hex: '#f97316' },
+  { id: 's_wave', label: 'S 波', color: 'violet', hex: '#8b5cf6' },
+]
+const PCG_WAVE_TYPES = [
+  { id: 's1', label: 'S1', color: 'blue', hex: '#3b82f6' },
+  { id: 's2', label: 'S2', color: 'green', hex: '#22c55e' },
+]
+const availableWaveTypes = computed(() =>
+  file.value?.file_type === 'ecg' ? ECG_WAVE_TYPES : PCG_WAVE_TYPES
+)
+const isPCG = computed(() => file.value && ['pcg', 'audio'].includes(file.value.file_type))
+const isS1Only = computed(() => isPCG.value && selectedWaveTypes.value.length === 1 && selectedWaveTypes.value[0] === 's1')
+const selectedWaveTypes = ref<string[]>([])
+
+// Initialize wave types when file type changes
+watch(() => file.value?.file_type, (ft) => {
+  if (ft === 'ecg') selectedWaveTypes.value = ['qrs', 'p_wave', 't_wave']
+  else selectedWaveTypes.value = ['s1', 's2']
+}, { immediate: true })
+
+const hoveredTooltipText = computed(() => {
+  const parts: string[] = []
+  const ri = reviewStore.active
+    ? reviewStore.items.find(i => i.id === hoveredReviewId.value)
+    : null
+  if (ri) {
+    const typeLabel = ri.annotation_type.replace('_wave', '').toUpperCase()
+    parts.push(
+      `<span style="font-weight:bold;color:#4ade80">${typeLabel}</span>` +
+      `<span style="opacity:0.7;margin-left:4px">${ri.label || ''}</span>` +
+      `<span style="opacity:0.5;margin-left:8px">${ri.start_time.toFixed(3)}s – ${(ri.end_time ?? ri.start_time).toFixed(3)}s</span>` +
+      `<span style="opacity:0.5;margin-left:8px">${(ri.confidence * 100).toFixed(0)}%</span>` +
+      (ri.trusted ? `<span style="color:#eab308;margin-left:6px">&#9650; 锚点</span>` : '')
+    )
+  }
+  if (hoveredAnnotation.value) {
+    const a = hoveredAnnotation.value
+    const dbAnchor = dbAnchors.value.has(a.id) ? '<span style="color:#eab308;margin-left:4px">&#9650; 锚点</span>' : ''
+    const typeLabel = a.annotation_type.replace('_wave', '').toUpperCase()
+    parts.push(
+      `<span style="font-weight:bold">${typeLabel}</span>` +
+      `<span style="opacity:0.7;margin-left:4px">${a.label || ''}</span>` +
+      `<span style="opacity:0.5;margin-left:8px">${a.start_time.toFixed(3)}s – ${(a.end_time ?? a.start_time).toFixed(3)}s</span>` +
+      (a.confidence != null ? `<span style="opacity:0.5;margin-left:8px">${(a.confidence * 100).toFixed(0)}%</span>` : '') +
+      dbAnchor
+    )
+  }
+  return parts.join('<br>') || null
+})
+
+// ── DB annotation anchors ─────────────────────────────────────────
+const dbAnchors = ref<Set<string>>(new Set())
+
+function toggleDbAnchor(id: string) {
+  const s = new Set(dbAnchors.value)
+  if (s.has(id)) s.delete(id)
+  else s.add(id)
+  dbAnchors.value = s
+  redrawAll()
+}
 
 // ── Tooltip (big) ─────────────────────────────────────────────────
 const bigHoveredAnnotation = ref<any>(null)
@@ -932,19 +1090,72 @@ const drawCanvas = (
           ctx.strokeStyle = col.line; ctx.lineWidth = 2; ctx.setLineDash([])
           ctx.strokeRect(xS, 0, spanW, height)
         }
-        ctx.strokeStyle = col.line; ctx.lineWidth = isHighlighted ? 2 : 1.5; ctx.setLineDash([4, 3])
+        ctx.strokeStyle = dbAnchors.value.has(ann.id) ? '#eab308' : col.line
+        ctx.lineWidth = isHighlighted ? 2 : 1.5
+        ctx.setLineDash(dbAnchors.value.has(ann.id) ? [3, 2] : [4, 3])
         ctx.beginPath(); ctx.moveTo(xMid, 0); ctx.lineTo(xMid, height); ctx.stroke()
         ctx.setLineDash([])
+        const isAnchor = dbAnchors.value.has(ann.id)
         const label = ann.annotation_type.replace('_wave', '').toUpperCase()
         ctx.font = `bold ${isHighlighted ? 11 : 10}px system-ui,sans-serif`
         const tw = ctx.measureText(label).width
         const tagX = Math.min(W - tw - 8, Math.max(2, xMid - tw / 2 - 3))
-        ctx.fillStyle = col.line; roundRect(ctx, tagX, 4, tw + 6, 16, 3); ctx.fill()
+        ctx.fillStyle = isAnchor ? '#eab308' : col.line
+        roundRect(ctx, tagX, 4, tw + 6, 16, 3); ctx.fill()
         ctx.fillStyle = '#fff'; ctx.fillText(label, tagX + 3, 17)
+        // Triangle marker for anchored DB annotations
+        if (isAnchor) {
+          const diamondX = xMid
+          ctx.fillStyle = '#eab308'
+          ctx.beginPath(); ctx.moveTo(diamondX, 3); ctx.lineTo(diamondX + 4, 9); ctx.lineTo(diamondX - 4, 9); ctx.closePath(); ctx.fill()
+        }
       } else {
         ctx.strokeStyle = col.line; ctx.lineWidth = 1; ctx.globalAlpha = 0.5
         ctx.beginPath(); ctx.moveTo(xMid, 0); ctx.lineTo(xMid, 12); ctx.stroke()
         ctx.globalAlpha = 1
+      }
+    }
+  }
+
+  // ── Review items overlay (待审核标注) ──────────────────────────────
+  if (reviewStore.active && reviewStore.items.length > 0 && dur > 0) {
+    const tS = viewStart.value * dur, tE = viewEnd.value * dur, tR = tE - tS
+    for (const item of reviewStore.items) {
+      const st = item.start_time, et = item.end_time ?? st
+      if (et < tS || st > tE) continue
+      const xS = Math.max(0, ((st - tS) / tR) * W)
+      const xE = Math.min(W, ((et - tS) / tR) * W)
+      const xMid = (xS + xE) / 2
+      const spanW = Math.max(1, xE - xS)
+      const isTrusted = item.trusted
+      const sel = item.selected
+      // Trusted anchor items: amber/gold; normal: green
+      const fillColor = isTrusted
+        ? (sel ? 'rgba(234,179,8,0.35)' : 'rgba(234,179,8,0.18)')
+        : (sel ? 'rgba(34,197,94,0.25)' : 'rgba(34,197,94,0.12)')
+      const strokeColor = isTrusted ? '#ca8a04' : '#16a34a'
+      const labelColor = isTrusted ? (sel ? '#a16207' : '#ca8a04') : (sel ? '#16a34a' : '#4ade80')
+      ctx.fillStyle = fillColor
+      ctx.fillRect(xS, 0, spanW, height)
+      ctx.strokeStyle = strokeColor; ctx.lineWidth = sel ? 2 : 1.2
+      ctx.setLineDash(sel ? [] : [4, 4])
+      ctx.strokeRect(xS, 1, spanW, height - 2)
+      ctx.setLineDash([])
+      ctx.strokeStyle = strokeColor; ctx.lineWidth = 1; ctx.globalAlpha = 0.6
+      ctx.setLineDash([2, 4])
+      ctx.beginPath(); ctx.moveTo(xMid, 2); ctx.lineTo(xMid, height - 2); ctx.stroke()
+      ctx.setLineDash([]); ctx.globalAlpha = 1
+      const label = item.annotation_type.replace('_wave', '').toUpperCase()
+      ctx.font = 'bold 9px system-ui,sans-serif'
+      const tw = ctx.measureText(label).width
+      const tagX = Math.min(W - tw - 6, Math.max(2, xMid - tw / 2 - 2))
+      ctx.fillStyle = labelColor
+      roundRect(ctx, tagX, height - 18, tw + 4, 14, 3); ctx.fill()
+      ctx.fillStyle = '#fff'; ctx.fillText(label, tagX + 2, height - 7)
+      // Draw a small triangle marker for trusted items
+      if (isTrusted) {
+        ctx.fillStyle = '#eab308'
+        ctx.beginPath(); ctx.moveTo(xMid, 3); ctx.lineTo(xMid + 5, 10); ctx.lineTo(xMid - 5, 10); ctx.closePath(); ctx.fill()
       }
     }
   }
@@ -984,6 +1195,24 @@ const drawCanvas = (
     i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)
   }
   ctx.stroke()
+
+  // Region selection overlay
+  if (regionSel.active.value && dur > 0) {
+    const tS = viewStart.value * dur, tE = viewEnd.value * dur, tR = tE - tS
+    const rS = regionSel.regionStart.value, rE = regionSel.regionEnd.value
+    const xS = Math.max(0, (rS - viewStart.value) / viewWindow.value * W)
+    const xE = Math.min(W, (rE - viewStart.value) / viewWindow.value * W)
+    ctx.fillStyle = 'rgba(249, 115, 22, 0.28)'
+    ctx.fillRect(xS, 0, Math.max(1, xE - xS), height)
+    // Draw selection boundaries
+    ctx.strokeStyle = '#ea580c'; ctx.lineWidth = 2.5; ctx.setLineDash([])
+    ctx.beginPath(); ctx.moveTo(xS, 0); ctx.lineTo(xS, height); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(xE, 0); ctx.lineTo(xE, height); ctx.stroke()
+    // Top/bottom edge lines
+    ctx.strokeStyle = 'rgba(234, 88, 12, 0.4)'; ctx.lineWidth = 1
+    ctx.beginPath(); ctx.moveTo(xS, 2); ctx.lineTo(xE, 2); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(xS, height - 2); ctx.lineTo(xE, height - 2); ctx.stroke()
+  }
 }
 
 const drawWaveform = () => {
@@ -1035,15 +1264,59 @@ const drawLaneCanvas = (c: HTMLCanvasElement, laneIdx: number) => {
       ctx.strokeStyle = col.line; ctx.lineWidth = 2; ctx.setLineDash([])
       ctx.strokeRect(xS, 0, spanW, LANE_H)
     }
-    ctx.strokeStyle = col.line; ctx.lineWidth = isSelected ? 2 : 1.5; ctx.setLineDash([3, 3])
+    const isDbAnchor = dbAnchors.value.has(ann.id)
+    ctx.strokeStyle = isDbAnchor ? '#eab308' : col.line
+    ctx.lineWidth = isSelected ? 2 : 1.5
+    ctx.setLineDash(isDbAnchor ? [3, 2] : [3, 3])
     ctx.beginPath(); ctx.moveTo(xMid, 0); ctx.lineTo(xMid, LANE_H); ctx.stroke()
     ctx.setLineDash([])
     const lbl = ann.annotation_type.replace('_wave', '').toUpperCase()
     ctx.font = '9px system-ui,sans-serif'
     const tw = ctx.measureText(lbl).width
     const tagX = Math.min(W - tw - 6, Math.max(1, xMid - tw / 2 - 2))
-    ctx.fillStyle = col.line; roundRect(ctx, tagX, 2, tw + 4, 13, 2); ctx.fill()
+    ctx.fillStyle = isDbAnchor ? '#eab308' : col.line
+    roundRect(ctx, tagX, 2, tw + 4, 13, 2); ctx.fill()
     ctx.fillStyle = '#fff'; ctx.fillText(lbl, tagX + 2, 12)
+    if (isDbAnchor) {
+      ctx.fillStyle = '#eab308'
+      ctx.beginPath(); ctx.moveTo(xMid, 3); ctx.lineTo(xMid + 4, 9); ctx.lineTo(xMid - 4, 9); ctx.closePath(); ctx.fill()
+    }
+  }
+
+  // ── Review items overlay (big modal) ─────────────────────────────
+  if (reviewStore.active && reviewStore.items.length > 0) {
+    for (const item of reviewStore.items) {
+      const st = item.start_time, et = item.end_time ?? st
+      if (et < laneStart || st > laneEnd) continue
+      const xS = Math.max(0, ((st - laneStart) / laneDur) * W)
+      const xE = Math.min(W, ((et - laneStart) / laneDur) * W)
+      const xMid = (xS + xE) / 2
+      const spanW = Math.max(1, xE - xS)
+      const isTrusted = item.trusted
+      const sel = item.selected
+      const fillColor = isTrusted
+        ? (sel ? 'rgba(234,179,8,0.35)' : 'rgba(234,179,8,0.18)')
+        : (sel ? 'rgba(34,197,94,0.25)' : 'rgba(34,197,94,0.12)')
+      const strokeColor = isTrusted ? '#ca8a04' : '#16a34a'
+      const labelColor = isTrusted ? (sel ? '#a16207' : '#ca8a04') : (sel ? '#16a34a' : '#4ade80')
+      ctx.fillStyle = fillColor
+      ctx.fillRect(xS, 0, spanW, LANE_H)
+      ctx.strokeStyle = strokeColor; ctx.lineWidth = sel ? 2 : 1
+      ctx.setLineDash(sel ? [] : [3, 3])
+      ctx.strokeRect(xS, 1, spanW, LANE_H - 2)
+      ctx.setLineDash([])
+      ctx.strokeStyle = strokeColor; ctx.lineWidth = 1; ctx.globalAlpha = 0.5
+      ctx.setLineDash([2, 3])
+      ctx.beginPath(); ctx.moveTo(xMid, 2); ctx.lineTo(xMid, LANE_H - 2); ctx.stroke()
+      ctx.setLineDash([]); ctx.globalAlpha = 1
+      const lbl = item.annotation_type.replace('_wave', '').toUpperCase()
+      ctx.font = '8px system-ui,sans-serif'
+      const tw = ctx.measureText(lbl).width
+      const tagX = Math.min(W - tw - 4, Math.max(1, xMid - tw / 2 - 1))
+      ctx.fillStyle = labelColor
+      roundRect(ctx, tagX, LANE_H - 13, tw + 4, 11, 2); ctx.fill()
+      ctx.fillStyle = '#fff'; ctx.fillText(lbl, tagX + 2, LANE_H - 4)
+    }
   }
 
   // Edit preview region
@@ -1143,7 +1416,40 @@ const onWheel = (e: WheelEvent) => {
 }
 
 const onWaveMouseDown = (e: MouseEvent) => {
-  // Capture drag state in plain vars — immune to Vue reactivity batching
+  if (!waveContainer.value || !totalDuration.value) return
+  const rect = waveContainer.value.getBoundingClientRect()
+  const frac = (e.clientX - rect.left) / rect.width
+
+  // Click on review item → scroll review list to that item
+  if (hoveredReviewId.value && !e.shiftKey) {
+    reviewPanelRef.value?.highlightItem(hoveredReviewId.value)
+    return
+  }
+
+  // Shift+click: region selection mode
+  if (e.shiftKey) {
+    const totalFrac = viewStart.value + frac * viewWindow.value
+    regionSel.begin(totalFrac)
+    const onMove = (me: MouseEvent) => {
+      if (!regionSel.selecting.value || !waveContainer.value) return
+      const r = waveContainer.value.getBoundingClientRect()
+      const f = viewStart.value + (me.clientX - r.left) / r.width * viewWindow.value
+      regionSel.update(f)
+      drawWaveform()
+    }
+    const onUp = () => {
+      if (regionSel.selecting.value) regionSel.end()
+      drawWaveform()
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    return
+  }
+
+  // Normal left-click: pan mode (click = seek audio, drag = pan)
+  const clickTime = totalDuration.value * (viewStart.value + frac * viewWindow.value)
   _wvDragStartX = e.clientX
   _wvDragStartViewStart = viewStart.value
   _wvDragViewWindow = viewWindow.value
@@ -1151,16 +1457,22 @@ const onWaveMouseDown = (e: MouseEvent) => {
 
   const onMove = (me: MouseEvent) => {
     if (!waveDragging.value || !waveContainer.value) return
-    const rect = waveContainer.value.getBoundingClientRect()
-    const dx = (me.clientX - _wvDragStartX) / rect.width
-    // Always pan relative to the snapshot taken at mousedown
+    const r = waveContainer.value.getBoundingClientRect()
+    const dx = (me.clientX - _wvDragStartX) / r.width
     const newStart = Math.max(0, Math.min(1 - _wvDragViewWindow, _wvDragStartViewStart - dx * _wvDragViewWindow))
     viewStart.value = newStart
     viewEnd.value = newStart + _wvDragViewWindow
     redrawAll()
   }
-  const onUp = () => {
+  const onUp = (me: MouseEvent) => {
     waveDragging.value = false
+    const dist = Math.abs(me.clientX - _wvDragStartX)
+    // If it was a click (not a drag), seek audio to that position
+    if (dist < 5 && isAudioFile.value && audioEl.value) {
+      audioEl.value.currentTime = clickTime
+      playPos.value = clickTime
+      drawWaveform()
+    }
     window.removeEventListener('mousemove', onMove)
     window.removeEventListener('mouseup', onUp)
   }
@@ -1168,18 +1480,142 @@ const onWaveMouseDown = (e: MouseEvent) => {
   window.addEventListener('mouseup', onUp)
 }
 
-const onWaveMouseMove = (e: MouseEvent) => {
-  // Only used for annotation hover tooltip now — drag is handled via window listeners
-  if (!showAnnotationsOnWave.value || !totalDuration.value) { hoveredAnnotation.value = null; return }
-  if (!waveContainer.value) return
+const onWaveRightClick = (e: MouseEvent) => {
+  if (!waveContainer.value || !totalDuration.value) return
   const rect = waveContainer.value.getBoundingClientRect()
   const frac = (e.clientX - rect.left) / rect.width
   const t = (viewStart.value + frac * viewWindow.value) * totalDuration.value
-  hoveredAnnotation.value = annotations.value.find(a => t >= (a.start_time - 0.02) && t <= ((a.end_time ?? a.start_time) + 0.02)) ?? null
+
+  // Check what's under the cursor (distance-based to handle sparse items)
+  let hitReview: any = null
+  let hitAnnotation: any = null
+  const HIT_RADIUS = 0.15 // seconds — covers the gap between consecutive beats at full zoom
+
+  if (reviewStore.active) {
+    let bestDist = HIT_RADIUS
+    for (const r of reviewStore.items) {
+      const mid = ((r.end_time ?? r.start_time) + r.start_time) / 2
+      const dist = Math.abs(t - mid)
+      if (dist < bestDist) { bestDist = dist; hitReview = r }
+    }
+  }
+  {
+    let bestDist = HIT_RADIUS
+    for (const a of annotations.value) {
+      const mid = ((a.end_time ?? a.start_time) + a.start_time) / 2
+      const dist = Math.abs(t - mid)
+      if (dist < bestDist) { bestDist = dist; hitAnnotation = a }
+    }
+  }
+
+  const items: ContextMenuItem[] = []
+
+  // ── Review item context ──────────────────────────────────────────
+  if (hitReview) {
+    items.push(
+      {
+        label: hitReview.trusted ? '取消锚点' : '标记为锚点',
+        icon: Star,
+        onClick: () => { reviewStore.toggleTrusted(hitReview.id); drawWaveform() },
+      },
+      {
+        label: '接受此标记',
+        icon: Check,
+        onClick: () => { reviewStore.toggleSelect(hitReview.id); if (!hitReview.selected) hitReview.selected = true; drawWaveform() },
+      },
+      {
+        label: '移除此标记',
+        icon: X,
+        onClick: () => {
+          reviewStore.items = reviewStore.items.filter(i => i.id !== hitReview.id)
+          toast.info('已移除')
+          redrawAll()
+        },
+      },
+      { label: '', separator: true },
+    )
+  }
+
+  // ── DB annotation context ────────────────────────────────────────
+  if (hitAnnotation) {
+    const isAnchor = dbAnchors.value.has(hitAnnotation.id)
+    items.push(
+      {
+        label: isAnchor ? '取消锚点' : '标记为锚点',
+        icon: Star,
+        onClick: () => { toggleDbAnchor(hitAnnotation.id) },
+      },
+      {
+        label: '删除此标记',
+        icon: Trash2,
+        onClick: () => {
+          const id = hitAnnotation.id
+          delAnnotation(id)
+          const s = new Set(dbAnchors.value)
+          s.delete(id)
+          dbAnchors.value = s
+        },
+      },
+      { label: '', separator: true },
+    )
+  }
+
+  // ── Region / general items ───────────────────────────────────────
+  items.push(
+    {
+      label: '重新检测此区域',
+      disabled: !regionSel.selected.value,
+      onClick: () => { const r = regionSel.toTimeRange(totalDuration.value); if (r) detectRegion(r.startTime, r.endTime) },
+    },
+    { label: '在此位置新建标注', onClick: () => showAddAnnotationAt(t) },
+    ...(regionSel.selected.value ? [{
+      label: '清除选区',
+      onClick: () => { regionSel.cancel(); drawWaveform() },
+    }] : [{
+      label: '提示：Shift+拖拽框选区域',
+      disabled: true,
+    }]),
+  )
+
+  showContextMenu(e, items)
+}
+
+const onWaveMouseMove = (e: MouseEvent) => {
+  // Drag is handled via window listeners; track hover for tooltip + review items
+  if (!totalDuration.value || !waveContainer.value) {
+    hoveredAnnotation.value = null
+    hoveredReviewId.value = null
+    return
+  }
+  const rect = waveContainer.value.getBoundingClientRect()
+  const frac = (e.clientX - rect.left) / rect.width
+  const t = (viewStart.value + frac * viewWindow.value) * totalDuration.value
+
+  // Check review items first (distance-based, radius 0.08s)
+  hoveredReviewId.value = null
+  if (reviewStore.active && reviewStore.items.length > 0) {
+    let bestDist = 0.15
+    for (const r of reviewStore.items) {
+      const mid = ((r.end_time ?? r.start_time) + r.start_time) / 2
+      const dist = Math.abs(t - mid)
+      if (dist < bestDist) { bestDist = dist; hoveredReviewId.value = r.id }
+    }
+  }
+
+  // Then check DB annotations
+  hoveredAnnotation.value = null
+  if (showAnnotationsOnWave.value) {
+    let bestDist = 0.15
+    for (const a of annotations.value) {
+      const mid = ((a.end_time ?? a.start_time) + a.start_time) / 2
+      const dist = Math.abs(t - mid)
+      if (dist < bestDist) { bestDist = dist; hoveredAnnotation.value = a }
+    }
+  }
   tooltipX.value = e.clientX - rect.left
 }
 const onWaveMouseUp = () => { waveDragging.value = false; }
-const onWaveMouseLeave = () => { hoveredAnnotation.value = null }
+const onWaveMouseLeave = () => { hoveredAnnotation.value = null; hoveredReviewId.value = null }
 
 // ── Scrollbar ─────────────────────────────────────────────────────
 const scrollbarTrack = ref<HTMLElement | null>(null)
@@ -1290,6 +1726,7 @@ const onLaneMouseLeave = () => {
 }
 
 const onLaneMouseDown = (laneIdx: number, e: MouseEvent) => {
+  if (e.button !== 0) return  // Only left-click for annotation drag
   if (bigPickingField.value) return
   if (!bigHoveredAnnotation.value) return
   e.preventDefault()
@@ -1391,6 +1828,64 @@ const onLaneDblClick = async (laneIdx: number, e: MouseEvent) => {
     toast.error('添加失败')
   }
 }
+const onLaneRightClick = (laneIdx: number, e: MouseEvent) => {
+  if (!totalDuration.value) return
+  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+  const frac = (e.clientX - rect.left) / rect.width
+  const laneStart = laneIdx * laneSeconds.value
+  const laneEnd = Math.min(totalDuration.value, laneStart + laneSeconds.value)
+  const t = parseFloat((laneStart + frac * (laneEnd - laneStart)).toFixed(4))
+
+  // Check if right-click is on a DB annotation (distance-based)
+  let hitAnnotation: any = null
+  const HIT_R = 0.08
+  for (const a of annotations.value) {
+    const mid = ((a.end_time ?? a.start_time) + a.start_time) / 2
+    if (Math.abs(t - mid) < HIT_R) { hitAnnotation = a; break }
+  }
+
+  const items: ContextMenuItem[] = []
+
+  if (hitAnnotation) {
+    const isAnchor = dbAnchors.value.has(hitAnnotation.id)
+    items.push(
+      {
+        label: isAnchor ? '取消锚点' : '标记为锚点',
+        icon: Star,
+        onClick: () => { toggleDbAnchor(hitAnnotation.id); drawBigMultiLane() },
+      },
+      {
+        label: '删除此标记',
+        icon: Trash2,
+        onClick: () => {
+          const id = hitAnnotation.id
+          delAnnotation(id)
+          const s = new Set(dbAnchors.value)
+          s.delete(id)
+          dbAnchors.value = s
+          drawBigMultiLane()
+        },
+      },
+      { label: '', separator: true },
+    )
+  }
+
+  items.push(
+    { label: '在此位置新建标注', onClick: () => { openBigAddAt(t); bigSelectedId.value = null } },
+    {
+      label: '放大到此',
+      onClick: () => {
+        if (showBigModal.value) showBigModal.value = false
+        const halfWin = (laneEnd - laneStart) / totalDuration.value / 2
+        const center = t / totalDuration.value
+        const [s, en] = clampView(center - halfWin, center + halfWin)
+        viewStart.value = s; viewEnd.value = en; drawWaveform()
+      },
+    },
+  )
+  showContextMenu(e, items)
+}
+
 const onLaneClick = (laneIdx: number, e: MouseEvent) => {
   if (!totalDuration.value) return
   if (bigPickingField.value && bigEditForm.value) {
@@ -1620,7 +2115,6 @@ const jumpToAnnotation = (ann: any) => {
     selectAnnotation(ann)
     return
   }
-  // small canvas mode
   const center = (ann.start_time + (ann.end_time ?? ann.start_time)) / 2
   const frac = center / totalDuration.value
   const half = Math.max(0.05, viewWindow.value / 2)
@@ -1632,7 +2126,6 @@ const jumpToAnnotation = (ann: any) => {
 // ── Small modal form helpers ──────────────────────────────────────
 const openAddModal = (context: 'small' | 'big' | null) => {
   if (context === 'big') {
-    // Open inline in big modal
     bigEditingAnnotation.value = null
     bigEditForm.value = { annotation_type: 's1', label: '', start_time: 0, end_time: 0, confidence: null }
     bigEditMode.value = true
@@ -1690,7 +2183,15 @@ const delAnnotation = async (id: string) => {
   }
 }
 
-// ── File type / detect ────────────────────────────────────────────
+// ── Keyboard shortcuts ────────────────────────────────────────────
+import { useKeyboardShortcuts as useShortcuts } from '@/composables/useKeyboardShortcuts'
+useShortcuts([
+  { key: 'z', ctrl: true, handler: () => undoRedo.undo(), description: '撤销' },
+  { key: 'z', ctrl: true, shift: true, handler: () => undoRedo.redo(), description: '重做' },
+  { key: ' ', handler: togglePlay, description: '播放/暂停' },
+  { key: 'Escape', handler: () => { if (regionSel.active.value || regionSel.selected.value) { regionSel.cancel(); drawWaveform() } }, description: '取消选区' },
+])
+
 const annotationTypes = [
   { label: 'S1 心音', value: 's1' }, { label: 'S2 心音', value: 's2' },
   { label: 'QRS 波', value: 'qrs' }, { label: 'P 波', value: 'p_wave' },
@@ -1734,19 +2235,250 @@ const changeFileType = async (newType: string) => {
 const runDetect = async () => {
   if (!detectConfig.value || detecting.value) return
   detecting.value = true; lastDetectResult.value = null
-  const r = await fetch(`/api/v1/files/${fileId}/detect?algorithm=auto`, { method: 'POST', headers: authHeader })
+  const r = await fetch(`/api/v1/files/${fileId}/detect/preview?algorithm=auto`, { method: 'POST', headers: authHeader })
   detecting.value = false
   if (r.ok) {
-    const result = await r.json(); lastDetectResult.value = result
-    await loadAnnotations(); toast.success(`检测完成（${result.algorithm_used ?? 'auto'}），生成 ${result.detected_count} 个标记`)
+    const result = await r.json()
+    reviewStore.load(result.items, fileId, result.algorithm_used)
+    fullReviewItems.value = [...reviewStore.items]
+    const filtered = filterBySelectedTypes(reviewStore.items)
+    reviewStore.items = filtered
+    lastDetectResult.value = { ...result, detected_count: filtered.length }
+    toast.success(`检测预览完成（${result.algorithm_used}），${filtered.length} 个标记待审核`)
+    await autoDetectGaps(filtered)
   } else toast.error((await r.json().catch(() => ({}))).detail ?? '检测失败')
+}
+
+// ── Gap analysis ──────────────────────────────────────────────────
+interface GapInfo {
+  start: number; end: number; type: string
+  minBpm?: number; maxBpm?: number // BPM hints from preceding stable beats
+}
+
+function findDetectionGaps(items: any[], threshold: number = 2.5) {
+  const byType: Record<string, any[]> = {}
+  for (const item of items) {
+    const t = item.annotation_type
+    if (!byType[t]) byType[t] = []
+    byType[t].push(item)
+  }
+  const gaps: GapInfo[] = []
+  for (const [type, typed] of Object.entries(byType)) {
+    typed.sort((a: any, b: any) => a.start_time - b.start_time)
+    if (typed.length < 3) continue
+    const intervals: number[] = []
+    for (let i = 1; i < typed.length; i++) {
+      intervals.push(typed[i].start_time - typed[i - 1].start_time)
+    }
+    intervals.sort((a, b) => a - b)
+    const median = intervals[Math.floor(intervals.length / 2)]
+    if (median <= 0) continue
+    const gapThresh = median * threshold
+    for (let i = 1; i < typed.length; i++) {
+      const gap = typed[i].start_time - typed[i - 1].start_time
+      if (gap > gapThresh) {
+        const gapStart = typed[i - 1].end_time ?? typed[i - 1].start_time
+        const gapEnd = typed[i].start_time
+        const gapInfo: GapInfo = { start: gapStart, end: gapEnd, type }
+        // Compute BPM hints from preceding stable items (same type)
+        const lookback = typed.slice(Math.max(0, i - 6), i) // up to 5 items before gap
+        if (lookback.length >= 3) {
+          const preRR: number[] = []
+          for (let j = 1; j < lookback.length; j++) {
+            const rr = lookback[j].start_time - lookback[j - 1].start_time
+            if (rr > 0.2 && rr < 3.0) preRR.push(rr)
+          }
+          if (preRR.length >= 2) {
+            const meanRR = preRR.reduce((s, v) => s + v, 0) / preRR.length
+            const cv = Math.sqrt(preRR.reduce((s, v) => s + (v - meanRR) ** 2, 0) / preRR.length) / meanRR
+            // Only use if preceding pattern is stable (CV < 0.15)
+            if (cv < 0.15) {
+              const meanBpm = 60 / meanRR
+              gapInfo.minBpm = Math.max(20, Math.round(meanBpm * 0.8))
+              gapInfo.maxBpm = Math.min(250, Math.round(meanBpm * 1.25))
+            }
+          }
+        }
+        gaps.push(gapInfo)
+      }
+    }
+  }
+  return gaps
+}
+
+// ── Shared gap auto-detection ─────────────────────────────────────
+async function autoDetectGaps(detectedItems: any[]) {
+  const gaps = findDetectionGaps(detectedItems, 2.5)
+  if (gaps.length === 0 || gaps.length > 10) return
+  toast.info(`发现 ${gaps.length} 处可疑间隙，正在自动重检…`)
+  const before = reviewStore.items.length
+  for (const gap of gaps) {
+    await detectRegion(gap.start, gap.end, true, gap.minBpm, gap.maxBpm)
+  }
+  const added = reviewStore.items.length - before
+  if (added > 0) toast.success(`间隙重检完成，补充 ${added} 个标记`)
+  redrawAll()
 }
 
 // Called by DetectionPanel when detection finishes
 const onDetected = async (payload: { items: any[], algorithm: string, count: number }) => {
-  lastDetectResult.value = { detected_count: payload.count }
-  await loadAnnotations()
-  toast.success(`检测完成（${payload.algorithm}），生成 ${payload.count} 个标记`)
+  // Load all items first, then filter — enables re-filtering when toggling chips
+  reviewStore.load(payload.items, fileId, payload.algorithm)
+  fullReviewItems.value = [...reviewStore.items]
+  const filtered = filterBySelectedTypes(reviewStore.items)
+  reviewStore.items = filtered
+  lastDetectResult.value = { detected_count: filtered.length }
+  toast.success(`检测预览完成（${payload.algorithm}），${filtered.length} 个标记待审核`)
+  await autoDetectGaps(filtered)
+}
+
+// Keep full store items snapshot for re-filtering when wave type selection changes
+const fullReviewItems = ref<any[]>([])
+
+function filterBySelectedTypes(items: any[]) {
+  const types = selectedWaveTypes.value
+  if (types.length === 0 || types.length === availableWaveTypes.value.length) return items
+  return items.filter((it: any) => types.includes(it.annotation_type))
+}
+
+function toggleWaveType(typeId: string) {
+  const idx = selectedWaveTypes.value.indexOf(typeId)
+  if (idx === -1) {
+    selectedWaveTypes.value.push(typeId)
+  } else {
+    // Don't allow deselecting the last type
+    if (selectedWaveTypes.value.length <= 1) return
+    selectedWaveTypes.value.splice(idx, 1)
+  }
+}
+
+// Re-filter when wave type chips are toggled
+watch(selectedWaveTypes, () => {
+  if (fullReviewItems.value.length === 0) return
+  const filtered = filterBySelectedTypes(fullReviewItems.value)
+  reviewStore.items = filtered
+  reviewStore.active = true
+  redrawAll()
+}, { deep: true })
+
+// Review panel callbacks
+const onReviewAccepted = async () => {
+  lastDetectResult.value = null
+  await Promise.all([loadAnnotations(), loadOperationLogs()])
+  toast.success('标注已应用')
+}
+
+const onReviewRejected = () => {
+  lastDetectResult.value = null
+  toast.info('已放弃检测结果')
+}
+
+// Region re-detection
+const regionDetecting = ref(false)
+const detectRegion = async (startTime: number, endTime: number, silent: boolean = false, hintMinBpm?: number, hintMaxBpm?: number) => {
+  if (regionDetecting.value) return
+  regionDetecting.value = true
+  try {
+    const params = new URLSearchParams({
+      start_time: startTime.toString(),
+      end_time: endTime.toString(),
+      algorithm: 'neurokit2',
+    })
+    if (isS1Only.value) {
+      params.set('s1_only', 'true')
+    }
+
+    // Use explicit BPM hints if provided (from gap analysis)
+    let minBpm = hintMinBpm
+    let maxBpm = hintMaxBpm
+    let srcLabel = ''
+
+    if (minBpm === undefined || maxBpm === undefined) {
+      // Fallback: compute from manual anchors (user-trusted + DB anchors)
+      const reviewAnchors = reviewStore.getTrustedAnchorsInRange(startTime, endTime, 3)
+      const dbAnchorTimes = annotations.value
+        .filter(a => dbAnchors.value.has(a.id) && a.start_time >= startTime - 3 && a.start_time <= endTime + 3)
+        .map(a => a.start_time)
+        .sort((a, b) => a - b)
+      const reviewTimes = reviewAnchors.map(a => a.start_time)
+      const allTimes = [...new Set([...reviewTimes, ...dbAnchorTimes])].sort((a, b) => a - b)
+
+      if (allTimes.length >= 3) {
+        const intervals: number[] = []
+        for (let i = 1; i < allTimes.length; i++) {
+          const rr = allTimes[i] - allTimes[i - 1]
+          if (rr > 0.2 && rr < 3.0) intervals.push(rr)
+        }
+        if (intervals.length >= 2) {
+          const meanRR = intervals.reduce((s, v) => s + v, 0) / intervals.length
+          const meanBpm = Math.round(60 / meanRR)
+          minBpm = Math.max(20, Math.round(meanBpm * 0.75))
+          maxBpm = Math.min(250, Math.round(meanBpm * 1.35))
+          srcLabel = reviewAnchors.length > 0 && dbAnchorTimes.length > 0 ? '审批+DB锚点' :
+            reviewAnchors.length > 0 ? '审批锚点' : 'DB锚点'
+        }
+      }
+    } else {
+      srcLabel = '间隙前稳定节律'
+    }
+
+    if (minBpm !== undefined && maxBpm !== undefined) {
+      params.set('min_bpm', minBpm.toString())
+      params.set('max_bpm', maxBpm.toString())
+      if (!silent) toast.info(`${srcLabel}推算 BPM，约束区间 ${minBpm}–${maxBpm}`)
+    }
+
+    const r = await fetch(`/api/v1/files/${fileId}/detect/region?${params}`, { method: 'POST', headers: authHeader })
+    if (r.ok) {
+      const result = await r.json()
+      reviewStore.mergeRegionItems(result.items, startTime, endTime, fileId, result.algorithm_used)
+      regionSel.cancel()
+      redrawAll()
+      if (!silent) toast.success(`区域重检测完成，${result.detected_count} 个标记已合并`)
+    } else {
+      const err = await r.json().catch(() => ({}))
+      toast.error(err.detail ?? '区域检测失败')
+    }
+  } finally {
+    regionDetecting.value = false
+  }
+}
+
+// Show add annotation modal at specific time
+const showAddAnnotationAt = (t: number) => {
+  const defaultType = detectConfig.value?.types?.[0] ?? 's1'
+  editingAnnotation.value = null
+  editForm.value = {
+    annotation_type: defaultType,
+    label: '',
+    start_time: Math.round(t * 1000) / 1000,
+    end_time: Math.round((t + 0.04) * 1000) / 1000,
+    confidence: null,
+  }
+  showEditModal.value = true
+}
+
+// Big modal: open inline edit at specific time for quick add
+const openBigAddAt = (t: number) => {
+  const defaultType = detectConfig.value?.types?.[0] ?? 's1'
+  const half = 0.04
+  bigEditingAnnotation.value = null
+  bigEditForm.value = {
+    annotation_type: defaultType,
+    label: '',
+    start_time: parseFloat(Math.max(0, t - half).toFixed(4)),
+    end_time: parseFloat(Math.min(totalDuration.value, t + half).toFixed(4)),
+    confidence: null,
+  }
+  bigEditMode.value = true
+  bigPickingField.value = null
+  // Navigate to the right page
+  if (totalDuration.value > 0) {
+    const laneIdx = Math.floor(t / laneSeconds.value)
+    const newPage = Math.floor(laneIdx / lanesPerPage.value)
+    if (newPage !== bigPage.value) bigPage.value = newPage
+    nextTick(() => drawBigMultiLane())
+  }
 }
 
 // Clear auto-generated annotations
@@ -1795,6 +2527,36 @@ const loadAnnotations = async () => {
   redrawAll()
 }
 
+const loadOperationLogs = async () => {
+  loadingLogs.value = true
+  try {
+    const r = await fetch(
+      `/api/v1/annotations/operation-logs?file_id=${fileId}&limit=50`,
+      { headers: authHeader },
+    )
+    if (r.ok) operationLogs.value = (await r.json()).items ?? []
+  } catch {
+    operationLogs.value = []
+  }
+  loadingLogs.value = false
+}
+
+const undoOperation = async (logId: string) => {
+  const r = await fetch(`/api/v1/annotations/operation-logs/${logId}/undo`, {
+    method: 'POST',
+    headers: authHeader,
+  })
+  if (r.ok) {
+    const data = await r.json()
+    toast.success(data.message ?? '操作已撤销')
+    await loadAnnotations()
+    await loadOperationLogs()
+  } else {
+    const err = await r.json().catch(() => ({}))
+    toast.error(err.detail ?? '撤销失败')
+  }
+}
+
 const formatSize = (b: number) => b < 1024 ** 2 ? `${(b / 1024).toFixed(1)} KB` : `${(b / 1024 ** 2).toFixed(1)} MB`
 const formatDuration = (s: number) => `${Math.floor(s / 60)}:${Math.floor(s % 60).toString().padStart(2, '0')}`
 const formatDate = (d: string) => new Date(d).toLocaleString('zh-CN')
@@ -1805,7 +2567,7 @@ let bigListResizeObs: ResizeObserver | null = null
 
 onMounted(async () => {
   await loadFile()
-  await Promise.all([loadWaveform(), loadAnnotations()])
+  await Promise.all([loadWaveform(), loadAnnotations(), loadOperationLogs()])
   if (waveContainer.value) {
     resizeObs = new ResizeObserver(() => drawWaveform())
     resizeObs.observe(waveContainer.value)
@@ -1822,9 +2584,13 @@ onUnmounted(() => {
 })
 
 // ── Multi-lane watches ────────────────────────────────────────────
-watch([currentPageLanes, () => annotations.value.length, bigSelectedId, bigEditForm], () => {
+watch([currentPageLanes, () => annotations.value.length, bigSelectedId, bigEditForm, () => reviewStore.items.length], () => {
   if (showBigModal.value) drawBigMultiLane()
 }, { deep: true })
+
+// Review store state changes → redraw small waveform
+watch(() => reviewStore.items.length, () => { drawWaveform() })
+watch(() => reviewStore.items.map(i => i.selected), () => { drawWaveform() }, { deep: true })
 
 watch([laneSeconds, lanesPerPage], () => {
   bigPage.value = 0
