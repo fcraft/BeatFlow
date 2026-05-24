@@ -689,6 +689,124 @@ def create_esophageal_pacer(action: ExternalPhysicalAction) -> Pacemaker:
 - **ramp**：频率递增（测量窦房结恢复时间）
 - **overdrive**：以高于窦律 10-20bpm 的频率持续起搏
 
+### 直接心肌电刺激（外源性非同步起搏变体）
+
+食道调搏是"近心脏"的同步起搏。但存在更极端的场景：电极直接接触心肌（针尖在心肌内），
+与体表电极片形成回路，通过非心脏专用设备（如 TENS 理疗仪）供电。
+
+```
+解剖: 针尖 (~0.1mm²) → 心肌内
+      体表电极 (~10cm²) → 胸壁皮肤
+设备: 典型 TENS: 1-100mA, 1-250Hz, 脉宽 50-250µs
+
+针尖电流密度 = 1mA / (π×0.05²mm²) ≈ 127 A/cm²
+——是心脏起搏阈值的 1000-10000 倍
+```
+
+关键差异：
+
+| 特性 | 食道调搏 | 针尖心肌刺激 |
+|------|---------|------------|
+| capture_threshold | ~8 mA | ~0.05 mA (µA 级) |
+| 脉冲与心动周期同步 | 可同步 | **完全非同步** |
+| 电流密度 (A/cm²) | ~0.1 | **~100-1000** |
+| 夺获失败可能性 | 有（低于阈值时） | **几乎必然夺获** |
+
+**R-on-T 风险建模：**
+
+```python
+def compute_r_on_t_risk(
+    pacer: Pacemaker,
+    myocardium: MyocardiumState,
+    t_last_activation: float,
+    t: float,
+) -> float:
+    """
+    非同步脉冲落于 T 波（易损期）的概率。
+    
+    在 T 波顶端前后 30ms 的易损窗内受到电击 →
+    R-on-T 现象 → 多形性 VT / VF 高风险。
+    
+    易损窗占比 ≈ 60ms / (60/HR)s ≈ HR * 0.001
+    在 HR=70 时约 7% 概率命中。
+    
+    但这是 PER PULSE 的概率。TENS 以 100Hz 输出意味着每秒 100 个脉冲，
+    必然有一个落在 T 波上。
+    """
+    
+    vulnerable_window_ms = 60.0  # T 波易损窗
+    rr_ms = 60000.0 / myocardium.sinus_rate
+    fraction_vulnerable = vulnerable_window_ms / rr_ms
+    
+    # 每个脉冲落于 T 波的概率
+    p_single = fraction_vulnerable  # ~7% at HR 70
+    
+    # N 个非同步脉冲至少一个命中 T 波的概率
+    pulse_rate_hz = pacer.intrinsic_rate / 60.0  # TENS 频率可能是 100Hz
+    pulses_per_beat = pulse_rate_hz * (rr_ms / 1000.0)
+    p_at_least_one = 1 - (1 - p_single) ** pulses_per_beat
+    
+    # 在 100Hz TENS + HR 70: pulses_per_beat ≈ 85
+    # p_at_least_one ≈ 1 - 0.93^85 ≈ 0.998 → 99.8%
+    
+    return p_at_least_one
+```
+
+**场景分类：**
+
+| 条件 | 模型行为 | 临床结果 |
+|------|---------|---------|
+| 低频率 TENS (<50Hz)，低电流 | 脉冲频率低于窦律，窦律主导，但落在 T 波上的脉冲 → R-on-T → 可能 VT/VF | 不规整夺获 + VF 风险 |
+| 高频率 TENS (>100Hz) | 大量非同步脉冲 → 每次 T 波被命中 → 多形 VT → 退化为 VF | **VF** |
+| 任何频率，针尖直接心肌 | capture_prob = 1.0（必然夺获），竞争胜利 → 外部 pacing 为主导节律 | 超速起搏 → VT |
+| 针尖同时造成心肌损伤 | 额外叠加 `damage_level` ↑ + 局部炎症 → erp_dispersion ↑ → 折返基质 | VF 可诱导性更高 |
+
+**在 ExternalPacing 工厂中的实现：**
+
+```python
+def create_intracardiac_pacer(
+    action: ExternalPhysicalAction,
+    myocardium: MyocardiumState,
+) -> Pacemaker:
+    """
+    针尖心肌电极 + 非心脏专用设备。
+    关键：capture_probability ≈ 1.0（必然夺获），
+    但脉冲与心动周期完全非同步 → R-on-T 高概率。
+    """
+    # 针尖在心肌内 → 捕获阈值 µA 级
+    # 理疗仪输出 mA 级 → 远超阈值 → 必然捕获
+    capture_prob = 1.0  # 必然夺获
+
+    return Pacemaker(
+        kind="external_pacing",
+        intrinsic_rate=action.pacing_rate,  # TENS 典型 100-250Hz
+        origin="ventricle",                  # 针尖通常在右室
+        retrograde_p=True,                   # 可逆传心房
+        reset_by_capture=False,              # 非同步 — 不感知自身心律
+        protected=True,                      # 外部电流源
+        life=PacemakerLife.SUSTAINED,
+        conditions={
+            "capture_probability": capture_prob,
+            "pacing_mode": "asynchronous",   # 非同步模式
+            "r_on_t_risk": compute_r_on_t_risk(...),  # R-on-T 风险
+        },
+    )
+```
+
+**PacemakerCompetition 中的 R-on-T 处理：**
+
+当 `pacing_mode == "asynchronous"` 且脉冲落在 T 波易损窗时：
+
+```text
+1. External pacing pacemaker 以固定间期发射（非同步）
+2. 脉冲落在 T 波上 → R-on-T
+3. 触发 VF 启动条件：
+   - 心室不应期被强制打破 → 多子波折返
+   - VF pacemaker 被注册（random reentry, rate > 350 bpm）
+4. VF pacemaker 无条件的持续获胜（最高"有效"频率）
+5. 有效输出: VF → ECG 显示室颤波形 → 血流动力学崩溃
+```
+
 ## 8. Section 5: Bigeminy/Trigeminy as Emergent Behavior
 
 二联律和三联律不需要单独的状态机或命令——它们是 `PacemakerCompetition` 的 capture-reset 循环自然产生的结果。
@@ -1107,6 +1225,23 @@ async def test_post_exercise_valsalva_squat_vt_chain():
     → 多灶 PVC pacemakers + VT pacemaker
     → PacemakerCompetition: VT 胜出
     → 短阵 VT 持续 3-10 秒后自发终止（儿茶酚胺代谢 + preload 稳定）"""
+
+async def test_intracardiac_needle_r_on_t_to_vf():
+    """针尖心肌刺激 + TENS 100Hz 非同步脉冲：
+    → capture_prob = 1.0（针尖直接在心肌内）
+    → pacing_mode = 'asynchronous'
+    → 每秒 100 个脉冲，每个心动周期约 85 个脉冲
+    → 至少一个命中 T 波的概率 ≈ 99.8%
+    → R-on-T → VF pacemaker 被注册
+    → VF > 350bpm → 竞争必然获胜
+    → ECG: 室颤波形 + 血流动力学崩溃"""
+
+async def test_intracardiac_needle_low_rate_still_dangerous():
+    """即使低频率 (10Hz) 针尖刺激，非同步性质仍危险：
+    → 心率 70bpm 下每个心动周期约 8.5 个脉冲
+    → p_at_least_one = 1 - 0.93^8.5 ≈ 0.47
+    → 近 50% 概率在每次心搏中产生 R-on-T
+    → VF 在数秒内几乎必然触发"""
 
 async def test_bruce_protocol_progression():
     """Bruce 协议 0→3 min stage 1 → stage 2: intensity 应在每阶段递增。
